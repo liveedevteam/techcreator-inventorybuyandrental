@@ -4,57 +4,150 @@ import {
   SectionCard,
   StatCard,
   StatCardGrid,
+  QuickActionCard,
 } from "@/components";
-import { Users, ShieldCheck, Key, Rocket } from "lucide-react";
+import { ShieldCheck, Rocket, Package, ShoppingCart, Box, Calendar, Receipt } from "lucide-react";
 import { api } from "@/lib/trpc/server";
 
 export default async function DashboardPage() {
   const session = await auth();
-  const isAdmin = session?.user?.role === "admin";
+  const isAdmin = session?.user?.role === "admin" || session?.user?.role === "super_admin";
 
-  // Only fetch user count if admin
-  let userCount = 0;
+  // Fetch statistics if admin
+  let stats = {
+    products: 0,
+    buyStock: 0,
+    rentalAssets: 0,
+    activeRentals: 0,
+    sales: 0,
+    lowStock: 0,
+  };
+
   if (isAdmin) {
     try {
-      userCount = await api.user.count();
+      const [productsData, buyStockData, rentalAssetsData, rentalsData, salesData, lowStockData] =
+        await Promise.all([
+          api.product.list({ page: 1, limit: 1 }),
+          api.buyStock.list({ page: 1, limit: 1 }),
+          api.rentalAsset.list({ page: 1, limit: 1 }),
+          api.rental.list({ status: "active", page: 1, limit: 1 }),
+          api.sale.list({ page: 1, limit: 1 }),
+          api.buyStock.checkLowStock(),
+        ]);
+
+      stats = {
+        products: productsData?.total || 0,
+        buyStock: buyStockData?.total || 0,
+        rentalAssets: rentalAssetsData?.total || 0,
+        activeRentals: rentalsData?.total || 0,
+        sales: salesData?.total || 0,
+        lowStock: lowStockData?.length || 0,
+      };
     } catch {
-      // Ignore error if not authorized
+      // Ignore errors if not authorized
     }
   }
 
   return (
     <>
       <PageHeader
-        title={`Welcome back, ${session?.user?.name || "User"}!`}
-        description="Next.js + tRPC + Mongoose Boilerplate Dashboard"
+        title={`ยินดีต้อนรับ, ${session?.user?.name || "User"}!`}
+        description="ระบบจัดการสต็อก - Dashboard"
       />
 
       <div className="p-6 space-y-6">
         {/* Statistics Grid - Only show to admins */}
         {isAdmin && (
-          <StatCardGrid columns={3}>
+          <StatCardGrid columns={6}>
             <StatCard
-              label="Total Users"
-              value={userCount}
-              icon={Users}
+              label="สินค้าทั้งหมด"
+              value={stats.products}
+              icon={Package}
               variant="blue"
             />
             <StatCard
-              label="Your Role"
-              value={session?.user?.role || "user"}
-              icon={ShieldCheck}
+              label="สต็อกซื้อ"
+              value={stats.buyStock}
+              icon={ShoppingCart}
               variant="teal"
             />
             <StatCard
-              label="API Endpoints"
-              value={8}
-              icon={Key}
+              label="ทรัพย์สินเช่า"
+              value={stats.rentalAssets}
+              icon={Box}
               variant="indigo"
+            />
+            <StatCard
+              label="การเช่าที่ใช้งาน"
+              value={stats.activeRentals}
+              icon={Calendar}
+              variant="navy"
+            />
+            <StatCard
+              label="การขาย"
+              value={stats.sales}
+              icon={Receipt}
+              variant="blue"
+            />
+            <StatCard
+              label="แจ้งเตือนสต็อกต่ำ"
+              value={stats.lowStock}
+              icon={ShieldCheck}
+              variant="teal"
             />
           </StatCardGrid>
         )}
 
-        {/* Features Section */}
+        {/* Quick Actions */}
+        {isAdmin && (
+          <SectionCard title="การดำเนินการด่วน" description="เข้าถึงฟีเจอร์หลักได้อย่างรวดเร็ว">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+              <QuickActionCard
+                href="/products"
+                icon={Package}
+                title="สินค้า"
+                description="จัดการสินค้า"
+                iconColor="text-blue-500"
+                iconBgColor="bg-blue-500/10"
+              />
+              <QuickActionCard
+                href="/buy-stock"
+                icon={ShoppingCart}
+                title="สต็อกซื้อ"
+                description="จัดการสต็อกซื้อ"
+                iconColor="text-teal-500"
+                iconBgColor="bg-teal-500/10"
+              />
+              <QuickActionCard
+                href="/rental-assets"
+                icon={Box}
+                title="ทรัพย์สินเช่า"
+                description="จัดการทรัพย์สินเช่า"
+                iconColor="text-indigo-500"
+                iconBgColor="bg-indigo-500/10"
+              />
+              <QuickActionCard
+                href="/rentals"
+                icon={Calendar}
+                title="การเช่า"
+                description="จัดการการเช่า"
+                iconColor="text-purple-500"
+                iconBgColor="bg-purple-500/10"
+              />
+              <QuickActionCard
+                href="/sales"
+                icon={Receipt}
+                title="การขาย"
+                description="จัดการการขาย"
+                iconColor="text-green-500"
+                iconBgColor="bg-green-500/10"
+              />
+            </div>
+          </SectionCard>
+        )}
+
+        {/* Features Section - Removed for Stock Management System */}
+        {false && (
         <SectionCard
           title="Boilerplate Features"
           description="This boilerplate includes everything you need to build a full-stack application"
@@ -148,41 +241,7 @@ export default async function DashboardPage() {
           </div>
         </SectionCard>
 
-        {/* Getting Started Section */}
-        <SectionCard
-          title="Getting Started"
-          description="Quick steps to start building your application"
-        >
-          <div className="space-y-4">
-            <div className="rounded-lg bg-slate-800/50 p-4">
-              <h4 className="font-mono text-sm font-medium text-white mb-2">
-                1. Customize the User model
-              </h4>
-              <p className="text-sm text-slate-400">
-                Edit <code className="text-blue-400">src/lib/db/models/user.ts</code> to
-                add fields specific to your application.
-              </p>
-            </div>
-            <div className="rounded-lg bg-slate-800/50 p-4">
-              <h4 className="font-mono text-sm font-medium text-white mb-2">
-                2. Create new tRPC routers
-              </h4>
-              <p className="text-sm text-slate-400">
-                Add routers in <code className="text-blue-400">src/lib/trpc/routers/</code> and
-                register them in the index file.
-              </p>
-            </div>
-            <div className="rounded-lg bg-slate-800/50 p-4">
-              <h4 className="font-mono text-sm font-medium text-white mb-2">
-                3. Add new pages
-              </h4>
-              <p className="text-sm text-slate-400">
-                Create pages in <code className="text-blue-400">src/app/(dashboard)/</code> using
-                the existing UI components.
-              </p>
-            </div>
-          </div>
-        </SectionCard>
+        )}
       </div>
     </>
   );

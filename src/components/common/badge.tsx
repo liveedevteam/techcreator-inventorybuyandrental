@@ -10,7 +10,7 @@ const badgeVariants = cva(
         default:
           "rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground",
         notification:
-          "min-w-[1.25rem] rounded-full bg-blue-600 px-1.5 py-0.5 text-xs text-white",
+          "min-w-[1.25rem] rounded-full bg-primary px-1.5 py-0.5 text-xs text-primary-foreground",
         status: "rounded-full px-2.5 py-0.5 text-xs",
         outline:
           "rounded-full border border-border bg-transparent px-2.5 py-0.5 text-xs text-muted-foreground",
@@ -20,7 +20,8 @@ const badgeVariants = cva(
         success: "bg-success/15 text-success",
         warning: "bg-warning/15 text-warning",
         error: "bg-error/15 text-error",
-        blue: "bg-blue-600/15 text-blue-600",
+        blue: "bg-primary/15 text-primary",
+        teal: "bg-success/15 text-success", // Teal uses success color
       },
     },
     defaultVariants: {

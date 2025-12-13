@@ -1,3 +1,12 @@
+/**
+ * User Service
+ * 
+ * Handles all user-related business logic including:
+ * - User CRUD operations
+ * - Profile management
+ * - User authentication data
+ */
+
 import { TRPCError } from "@trpc/server";
 import { connectToDatabase } from "@/lib/db/connect";
 import User from "@/lib/db/models/user";
@@ -10,11 +19,15 @@ import type {
 } from "../schemas";
 import type { UserRole } from "@/lib/db/models/user";
 
-/**
- * User Service
- * Handles all user-related business logic
- */
+// ============================================================================
+// Type Definitions
+// ============================================================================
 
+/**
+ * User Data Transfer Object
+ * 
+ * Represents a user without sensitive password information.
+ */
 export interface UserDTO {
   id: string;
   name: string;
@@ -24,8 +37,17 @@ export interface UserDTO {
   updatedAt: Date;
 }
 
+// ============================================================================
+// CRUD Operations
+// ============================================================================
+
 /**
  * Get all users (admin only)
+ * 
+ * Returns list of all users sorted by creation date (newest first).
+ * Password field is excluded from results.
+ * 
+ * @returns Array of user DTOs
  */
 export async function listUsers(): Promise<UserDTO[]> {
   await connectToDatabase();
@@ -43,7 +65,11 @@ export async function listUsers(): Promise<UserDTO[]> {
 }
 
 /**
- * Get user by ID
+ * Get a single user by ID
+ * 
+ * @param input - User ID
+ * @returns User DTO
+ * @throws TRPCError if user not found
  */
 export async function getUserById(input: GetUserByIdInput): Promise<UserDTO> {
   await connectToDatabase();
@@ -67,12 +93,19 @@ export async function getUserById(input: GetUserByIdInput): Promise<UserDTO> {
 }
 
 /**
- * Create new user (admin only)
+ * Create a new user (admin only)
+ * 
+ * Validates email uniqueness before creating user.
+ * Password is automatically hashed by the User model.
+ * 
+ * @param input - User creation data (name, email, password, role)
+ * @returns Created user DTO
+ * @throws TRPCError if email already exists
  */
 export async function createUser(input: CreateUserInput): Promise<UserDTO> {
   await connectToDatabase();
 
-  // Check if email already exists
+  // Validate email uniqueness
   const existingUser = await User.findOne({ email: input.email });
   if (existingUser) {
     throw new TRPCError({
@@ -99,14 +132,21 @@ export async function createUser(input: CreateUserInput): Promise<UserDTO> {
 }
 
 /**
- * Update user (admin only)
+ * Update an existing user (admin only)
+ * 
+ * Validates email uniqueness if email is being updated.
+ * Only provided fields are updated.
+ * 
+ * @param input - User update data (id and optional fields to update)
+ * @returns Updated user DTO
+ * @throws TRPCError if user not found or email conflict
  */
 export async function updateUser(input: UpdateUserInput): Promise<UserDTO> {
   await connectToDatabase();
 
   const { id, ...updateData } = input;
 
-  // Check if email already exists (if updating email)
+  // Validate email uniqueness if email is being updated
   if (updateData.email) {
     const existingUser = await User.findOne({ email: updateData.email, _id: { $ne: id } });
     if (existingUser) {
@@ -141,7 +181,15 @@ export async function updateUser(input: UpdateUserInput): Promise<UserDTO> {
 }
 
 /**
- * Update current user's profile
+ * Update current user's own profile
+ * 
+ * Allows users to update their own profile information.
+ * Does not include timestamps in response.
+ * 
+ * @param userId - ID of the current user
+ * @param input - Profile update data
+ * @returns Updated user DTO (without timestamps)
+ * @throws TRPCError if user not found
  */
 export async function updateProfile(
   userId: string,
@@ -171,7 +219,13 @@ export async function updateProfile(
 }
 
 /**
- * Delete user (admin only)
+ * Delete a user (admin only)
+ * 
+ * Permanently removes a user from the system.
+ * 
+ * @param input - User ID to delete
+ * @returns Success status
+ * @throws TRPCError if user not found
  */
 export async function deleteUser(input: DeleteUserInput): Promise<{ success: boolean }> {
   await connectToDatabase();
@@ -188,7 +242,13 @@ export async function deleteUser(input: DeleteUserInput): Promise<{ success: boo
 }
 
 /**
- * Delete current user's account
+ * Delete current user's own account
+ * 
+ * Allows users to delete their own account.
+ * 
+ * @param userId - ID of the current user
+ * @returns Success status
+ * @throws TRPCError if user not found
  */
 export async function deleteAccount(userId: string): Promise<{ success: boolean }> {
   await connectToDatabase();
@@ -204,8 +264,14 @@ export async function deleteAccount(userId: string): Promise<{ success: boolean 
   return { success: true };
 }
 
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
 /**
- * Get total user count
+ * Get total number of users in the system
+ * 
+ * @returns Total user count
  */
 export async function getUserCount(): Promise<number> {
   await connectToDatabase();

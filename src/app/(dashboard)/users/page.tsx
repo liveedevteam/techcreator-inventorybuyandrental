@@ -29,7 +29,7 @@ const userFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(50),
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
-  role: z.enum(["admin", "user"]),
+  role: z.enum(["admin", "super_admin", "user"]),
 });
 
 type UserFormData = z.infer<typeof userFormSchema>;
@@ -40,7 +40,7 @@ export default function UsersPage() {
     id: string;
     name: string;
     email: string;
-    role: "admin" | "user";
+    role: "admin" | "super_admin" | "user";
   } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -99,7 +99,7 @@ export default function UsersPage() {
     id: string;
     name: string;
     email: string;
-    role: "admin" | "user";
+    role: "admin" | "super_admin" | "user";
   }) => {
     setEditingUser(user);
     reset({ name: user.name, email: user.email, password: "", role: user.role });

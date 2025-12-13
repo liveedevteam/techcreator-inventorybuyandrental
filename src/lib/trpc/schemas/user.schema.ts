@@ -4,7 +4,7 @@ import { z } from "zod";
  * User Validation Schemas
  */
 
-export const userRoleSchema = z.enum(["admin", "user"]);
+export const userRoleSchema = z.enum(["admin", "super_admin", "user"]);
 
 export const getUserByIdSchema = z.object({
   id: z.string().min(1, "User ID is required"),

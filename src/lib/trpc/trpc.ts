@@ -61,13 +61,27 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 });
 
 /**
- * Admin procedure - requires admin role
+ * Admin procedure - requires admin or super_admin role
  */
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.session.user.role !== "admin") {
+  if (ctx.session.user.role !== "admin" && ctx.session.user.role !== "super_admin") {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Admin access required",
+    });
+  }
+
+  return next({ ctx });
+});
+
+/**
+ * Super Admin procedure - requires super_admin role only
+ */
+export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.session.user.role !== "super_admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Super Admin access required",
     });
   }
 

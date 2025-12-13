@@ -1,4 +1,11 @@
-import { createTRPCRouter, protectedProcedure, adminProcedure } from "../trpc";
+/**
+ * User Router
+ * 
+ * tRPC router for user management endpoints.
+ * Handles user CRUD operations, profile management, and role updates.
+ */
+
+import { createTRPCRouter, protectedProcedure, adminProcedure, superAdminProcedure } from "../trpc";
 import {
   getUserByIdSchema,
   createUserSchema,
@@ -9,41 +16,81 @@ import {
 import * as userService from "../services/user.service";
 
 export const userRouter = createTRPCRouter({
+  // ============================================================================
+  // Super Admin-Only Operations
+  // ============================================================================
+  
   /**
-   * Get all users (admin only)
+   * Get all users
+   * 
+   * Requires super admin role. Returns list of all users in the system.
    */
-  list: adminProcedure.query(() => userService.listUsers()),
+  list: superAdminProcedure.query(() => userService.listUsers()),
 
   /**
-   * Get user by ID (admin only)
+   * Update user role
+   * 
+   * Requires super admin role. Allows changing user roles including super admin.
+   */
+  updateRole: superAdminProcedure
+    .input(updateUserSchema)
+    .mutation(({ input }) => userService.updateUser(input)),
+
+  // ============================================================================
+  // Admin-Only Operations
+  // ============================================================================
+  
+  /**
+   * Get user by ID
+   * 
+   * Requires admin role.
    */
   getById: adminProcedure
     .input(getUserByIdSchema)
     .query(({ input }) => userService.getUserById(input)),
 
   /**
-   * Create new user (admin only)
+   * Create a new user
+   * 
+   * Requires admin role. Validates email uniqueness.
    */
   create: adminProcedure
     .input(createUserSchema)
     .mutation(({ input }) => userService.createUser(input)),
 
   /**
-   * Update user (admin only)
+   * Update an existing user
+   * 
+   * Requires admin role. Validates email uniqueness if email is being updated.
    */
   update: adminProcedure
     .input(updateUserSchema)
     .mutation(({ input }) => userService.updateUser(input)),
 
   /**
-   * Delete user (admin only)
+   * Delete a user
+   * 
+   * Requires admin role. Permanently removes user from the system.
    */
   delete: adminProcedure
     .input(deleteUserSchema)
     .mutation(({ input }) => userService.deleteUser(input)),
 
   /**
-   * Update current user's profile
+   * Get total user count
+   * 
+   * Requires admin role. Returns total number of users.
+   */
+  count: adminProcedure.query(() => userService.getUserCount()),
+
+  // ============================================================================
+  // User Self-Service Operations
+  // ============================================================================
+  
+  /**
+   * Update current user's own profile
+   * 
+   * Available to all authenticated users. Users can update their own profile.
    */
   updateProfile: protectedProcedure
     .input(updateProfileSchema)
@@ -52,15 +99,12 @@ export const userRouter = createTRPCRouter({
     ),
 
   /**
-   * Delete current user's account
+   * Delete current user's own account
+   * 
+   * Available to all authenticated users. Users can delete their own account.
    */
   deleteAccount: protectedProcedure.mutation(({ ctx }) =>
     userService.deleteAccount(ctx.session.user.id)
   ),
-
-  /**
-   * Get total user count (admin only)
-   */
-  count: adminProcedure.query(() => userService.getUserCount()),
 });
 
