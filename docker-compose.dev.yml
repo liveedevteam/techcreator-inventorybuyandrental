@@ -1,0 +1,85 @@
+version: "3.8"
+
+services:
+  # Next.js Application (Development Mode)
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.dev
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - MONGODB_URI=mongodb://mongo:27017/boilerplate
+  #     - AUTH_SECRET=${AUTH_SECRET:-development-secret-change-in-production}
+  #     - AUTH_TRUST_HOST=true
+  #     - NODE_ENV=development
+  #     - WATCHPACK_POLLING=true
+  #   volumes:
+  #     # Mount source code for hot reload
+  #     - ./src:/app/src
+  #     - ./public:/app/public
+  #     # Mount config files
+  #     - ./package.json:/app/package.json
+  #     - ./package-lock.json:/app/package-lock.json
+  #     - ./next.config.ts:/app/next.config.ts
+  #     - ./tsconfig.json:/app/tsconfig.json
+  #     - ./postcss.config.mjs:/app/postcss.config.mjs
+  #     - ./components.json:/app/components.json
+  #     - ./eslint.config.mjs:/app/eslint.config.mjs
+  #     - ./migrate-mongo-config.js:/app/migrate-mongo-config.js
+  #     # Mount scripts directory
+  #     - ./scripts:/app/scripts
+  #     # Mount migrations directory
+  #     - ./migrations:/app/migrations
+  #     # Exclude node_modules and .next (use container's versions)
+  #     - /app/node_modules
+  #     - /app/.next
+  #   depends_on:
+  #     mongo:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - app-network
+
+  # MongoDB Database
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    environment:
+      - MONGO_INITDB_DATABASE=boilerplate
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # MongoDB Express (optional admin UI for development)
+  mongo-express:
+    image: mongo-express:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/
+      - ME_CONFIG_BASICAUTH=false
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  mongo_data:
+  mongo_config:
+
+networks:
+  app-network:
+    driver: bridge

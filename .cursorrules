@@ -1,0 +1,570 @@
+# AI Instructions for Next.js + tRPC + Mongoose Boilerplate
+
+## Project Overview
+
+A production-ready boilerplate for building full-stack applications with Next.js 16, tRPC v11, and Mongoose v9. Features role-based authentication (admin/user), a modern dark-themed UI, and Docker support.
+
+## Tech Stack
+
+### Core Framework
+- **Next.js 16** with App Router (server components by default)
+- **React 19** with React Compiler (babel-plugin-react-compiler)
+- **TypeScript 5** with strict mode
+
+### API Layer
+- **tRPC v11** for type-safe end-to-end APIs
+- **@tanstack/react-query** for client-side data fetching (via tRPC)
+- **SuperJSON** for serialization (handles Date objects, etc.)
+- **Zod v4** for input validation
+
+### Authentication
+- **NextAuth v5 (beta)** with credentials provider
+- JWT strategy for sessions
+- **Role-based access control** (`admin` | `user` roles)
+- Three procedure types: `publicProcedure`, `protectedProcedure`, `adminProcedure`
+
+### Database
+- **MongoDB** with **Mongoose v9**
+- **migrate-mongo** for database migrations
+- Cached connection pattern for serverless environments
+
+### UI/Styling
+- **TailwindCSS v4** with PostCSS
+- **shadcn/ui** components (Radix UI primitives)
+- **tw-animate-css** for animations
+- **class-variance-authority** for component variants
+- **Lucide React** for icons
+- Navy blue sidebar theme with OKLCH color space
+
+### DevOps
+- **Docker** support (full stack containerization)
+- **docker-compose** for local development
+
+## Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Auth route group (login, forgot-password, reset-password)
+│   ├── (dashboard)/       # Protected dashboard routes
+│   │   ├── users/         # User management (admin only)
+│   │   └── page.tsx       # Dashboard home
+│   ├── api/               # API routes
+│   │   ├── auth/          # NextAuth handlers
+│   │   └── trpc/          # tRPC HTTP handler
+│   ├── globals.css        # Global styles & CSS variables
+│   └── layout.tsx         # Root layout with TRPCProvider
+├── components/
+│   ├── ui/                # shadcn/ui base components
+│   ├── layout/            # Layout components (AppShell, Sidebar, Footer)
+│   ├── navigation/        # Navigation components (NavItem, NavGroup, UserMenu)
+│   ├── page/              # Page-level components (PageHeader, SectionCard, StatCard)
+│   └── common/            # Shared utility components (Badge, Avatar, FileInput)
+├── lib/
+│   ├── auth.ts            # NextAuth configuration with roles
+│   ├── db/
+│   │   ├── connect.ts     # MongoDB connection (cached)
+│   │   ├── migrate.ts     # Migration runner
+│   │   └── models/        # Mongoose models (User, PasswordResetToken)
+│   ├── trpc/
+│   │   ├── client.ts      # tRPC React client
+│   │   ├── routers/       # tRPC routers (auth, user)
+│   │   ├── services/      # Business logic services
+│   │   ├── schemas/       # Zod validation schemas
+│   │   ├── server.ts      # Server-side caller
+│   │   └── trpc.ts        # tRPC initialization with role-based procedures
+│   └── utils.ts           # Utility functions (cn)
+├── providers/
+│   └── trpc-provider.tsx  # tRPC + React Query provider
+scripts/                   # Utility scripts
+├── seed-user.ts           # Seed admin user
+├── change-password.ts     # Change user password
+└── inspect-db.ts          # Database inspection tool
+migrations/                # Database migrations
+```
+
+## UI Component Library
+
+### IMPORTANT: Always Reuse Existing Components First!
+
+Before creating new UI elements, **ALWAYS** check the existing component library:
+
+```typescript
+// Import from component index for convenience
+import {
+  // Layout
+  AppShell, AppShellSidebar, AppShellMain, AppShellContent,
+  Sidebar, SidebarBrand, SidebarNav, SidebarFooter,
+  MobileNav, Footer,
+  
+  // Navigation
+  NavItem, NavGroup, UserMenu,
+  
+  // Page Components
+  PageHeader, SectionCard, StatCard, StatCardGrid,
+  
+  // Common/Utility
+  Badge, StatusIndicator, Avatar, IconButton, FileInput, SelectField,
+  
+  // Base UI (shadcn)
+  Button, Card, CardHeader, CardContent, Input, Label,
+} from "@/components";
+```
+
+### Component Categories
+
+#### 1. Layout Components (`@/components/layout`)
+
+| Component | Purpose | When to Use |
+|-----------|---------|-------------|
+| `AppShell` | Main app layout wrapper | Root layout for authenticated pages |
+| `AppShellSidebar` | Sidebar container | Contains navigation sidebar |
+| `AppShellMain` | Main content wrapper | Contains page content |
+| `Sidebar` | Navigation sidebar | Always for main navigation |
+| `SidebarBrand` | Logo/brand in sidebar | Top of sidebar |
+| `SidebarNav` | Nav items container | Wrap NavItem components |
+| `MobileNav` | Mobile header with hamburger | Responsive mobile navigation |
+| `Footer` | App footer | Bottom of main content |
+
+**Example - Dashboard Layout:**
+```typescript
+export default function DashboardLayout({ children }) {
+  const isAdmin = session.user.role === "admin";
+  
+  return (
+    <AppShell>
+      <AppShellSidebar>
+        <Sidebar>
+          <SidebarBrand icon={Code2} title="Boilerplate" subtitle="Next.js + tRPC" />
+          <SidebarNav>
+            <NavItem href="/" icon={HomeIcon} exact>Dashboard</NavItem>
+            {isAdmin && <NavItem href="/users" icon={UsersIcon}>Users</NavItem>}
+          </SidebarNav>
+          <SidebarFooter>
+            <UserMenu name={userName} role={userRole} onLogout={handleLogout} />
+          </SidebarFooter>
+        </Sidebar>
+      </AppShellSidebar>
+      <AppShellMain>
+        <MobileNav brandIcon={Code2} brandTitle="Boilerplate" />
+        <AppShellContent>{children}</AppShellContent>
+        <Footer version="1.0.0" status="online" />
+      </AppShellMain>
+    </AppShell>
+  );
+}
+```
+
+#### 2. Navigation Components (`@/components/navigation`)
+
+| Component | Purpose | Props |
+|-----------|---------|-------|
+| `NavItem` | Sidebar nav link | `href`, `icon`, `badge?`, `exact?` |
+| `NavGroup` | Group nav items | `label?`, `collapsible?` |
+| `UserMenu` | User profile section | `name`, `role?`, `avatarSrc?`, `onLogout?` |
+
+#### 3. Page Components (`@/components/page`)
+
+| Component | Purpose | Props |
+|-----------|---------|-------|
+| `PageHeader` | Page title & actions | `title`, `description?`, `children` |
+| `SectionCard` | Content section | `title`, `description?`, `icon?`, `onIconClick?` |
+| `StatCard` | Statistics display | `label`, `value`, `icon?`, `variant?` |
+| `StatCardGrid` | Grid for StatCards | `columns?` (1-4) |
+
+**Example - Page Structure:**
+```typescript
+export default function UsersPage() {
+  return (
+    <>
+      <PageHeader 
+        title="User Management"
+        description="Create, edit, and manage user accounts"
+      >
+        <Button><Plus /> Add User</Button>
+      </PageHeader>
+      
+      <div className="p-6 space-y-6">
+        <StatCardGrid columns={3}>
+          <StatCard label="Total Users" value={42} icon={Users} variant="blue" />
+          <StatCard label="Admins" value={3} icon={ShieldCheck} variant="teal" />
+          <StatCard label="Active Today" value={28} icon={Activity} variant="indigo" />
+        </StatCardGrid>
+        
+        <SectionCard
+          title="All Users"
+          description="Manage user accounts and roles"
+          icon={Users}
+        >
+          {/* User table/list */}
+        </SectionCard>
+      </div>
+    </>
+  );
+}
+```
+
+#### 4. Common Components (`@/components/common`)
+
+| Component | Purpose | Props |
+|-----------|---------|-------|
+| `Badge` | Status/notification badge | `variant`, `color?` |
+| `StatusIndicator` | Online/offline dot | `status`, `label?` |
+| `Avatar` | User avatar | `src?`, `fallback`, `size?` |
+| `IconButton` | Icon-only button | `icon`, `size?`, `variant?` |
+| `FileInput` | File upload input | `label?`, `accept?`, `maxSize?`, `helperText?` |
+| `SelectField` | Styled select dropdown | `label?`, `labelIcon?`, `options`, `helperText?` |
+
+### Design Tokens & Styling
+
+#### Color Variables (use CSS variables)
+```css
+/* Primary - Navy theme for sidebar */
+--sidebar: oklch(0.208 0.042 265.755);        /* Navy 900 */
+--sidebar-accent: oklch(0.279 0.041 260.031); /* Navy 800 */
+
+/* Accent - Blue for actions */
+--primary: oklch(0.546 0.245 262.881);        /* Blue 600 */
+--blue-400: oklch(0.707 0.165 254.624);       /* For active icons */
+
+/* Status Colors */
+--success: oklch(0.723 0.191 142.542);        /* Green */
+--warning: oklch(0.769 0.188 70.08);          /* Amber */
+--error: oklch(0.627 0.257 29.234);           /* Red */
+```
+
+#### Gradient Classes for StatCard
+```typescript
+variant="blue"    // gradient-blue (navy to blue)
+variant="teal"    // gradient-teal (dark teal to light teal)
+variant="indigo"  // gradient-indigo (indigo to violet)
+variant="navy"    // gradient-navy (dark navy to light navy)
+```
+
+#### Standard Spacing
+- Card padding: `p-6`
+- Section gap: `space-y-6`
+- Form element gap: `space-y-4` or `gap-4`
+- Inline element gap: `gap-2` or `gap-3`
+
+---
+
+## Code Conventions
+
+### tRPC Routers with Role-Based Access
+
+Create routers in `src/lib/trpc/routers/` and register them in `index.ts`:
+
+```typescript
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { createTRPCRouter, publicProcedure, protectedProcedure, adminProcedure } from "../trpc";
+import { connectToDatabase } from "@/lib/db/connect";
+
+export const exampleRouter = createTRPCRouter({
+  // Public endpoint - no auth required
+  publicQuery: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      await connectToDatabase();
+      // ... implementation
+    }),
+
+  // Protected endpoint - requires authentication
+  protectedMutation: protectedProcedure
+    .input(z.object({ name: z.string().min(2) }))
+    .mutation(async ({ ctx, input }) => {
+      // ctx.session.user is available (id, name, email, role)
+      await connectToDatabase();
+      // ... implementation
+    }),
+
+  // Admin-only endpoint - requires admin role
+  adminOnlyMutation: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Only admins can access this
+      await connectToDatabase();
+      // ... implementation
+    }),
+});
+```
+
+**Important**: Always call `await connectToDatabase()` at the start of database operations.
+
+### Mongoose Models
+
+Define models in `src/lib/db/models/`:
+
+```typescript
+import mongoose, { Schema, Model, Document } from "mongoose";
+
+export interface IExample {
+  _id: mongoose.Types.ObjectId;
+  field: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const exampleSchema = new Schema<IExample>(
+  {
+    field: {
+      type: String,
+      required: [true, "Field is required"],
+      trim: true,
+    },
+  },
+  { timestamps: true }
+);
+
+// Type 'this' properly in middleware
+exampleSchema.pre("save", async function (this: IExample & Document) {
+  // Access document properties with proper typing
+});
+
+// Prevent model recompilation during hot reload
+const Example =
+  (mongoose.models.Example as Model<IExample>) ||
+  mongoose.model<IExample>("Example", exampleSchema);
+
+export default Example;
+```
+
+### User Model with Roles
+
+The boilerplate includes a User model with role support:
+
+```typescript
+export type UserRole = "admin" | "user";
+
+export interface IUser {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  createdAt: Date;
+  updatedAt: Date;
+  comparePassword(candidatePassword: string): Promise<boolean>;
+}
+```
+
+### React Components
+
+**Always import from the component library first:**
+
+```typescript
+"use client";
+
+import {
+  PageHeader,
+  SectionCard,
+  StatCard,
+  StatCardGrid,
+  Button,
+  SelectField,
+  FileInput,
+} from "@/components";
+import { trpc } from "@/lib/trpc/client";
+
+export default function ExamplePage() {
+  const { data, isLoading } = trpc.example.list.useQuery();
+  const mutation = trpc.example.create.useMutation({
+    onSuccess: () => {
+      // Invalidate and refetch
+      trpc.useUtils().example.list.invalidate();
+    },
+  });
+
+  return (
+    <>
+      <PageHeader title="Example Page" description="Manage examples">
+        <Button>Create New</Button>
+      </PageHeader>
+      
+      <div className="p-6 space-y-6">
+        <SectionCard title="Section Title" description="Section description">
+          {/* Content */}
+        </SectionCard>
+      </div>
+    </>
+  );
+}
+```
+
+### Authentication & Role Checking
+
+```typescript
+import { auth } from "@/lib/auth";
+
+// Server Component
+export default async function Page() {
+  const session = await auth();
+  if (!session) redirect("/login");
+  
+  const isAdmin = session.user.role === "admin";
+  // Render different content based on role
+}
+```
+
+```typescript
+// Client Component
+import { useSession } from "next-auth/react";
+
+export function Component() {
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "admin";
+  // ...
+}
+```
+
+### Form Validation with react-hook-form + Zod
+
+```typescript
+"use client";
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+const formSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email"),
+  role: z.enum(["admin", "user"]),
+});
+
+type FormData = z.infer<typeof formSchema>;
+
+export function UserForm() {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+  });
+
+  const onSubmit = (data: FormData) => {
+    // Handle form submission
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <Input {...register("name")} />
+      {errors.name && <p className="text-red-400">{errors.name.message}</p>}
+      {/* ... */}
+    </form>
+  );
+}
+```
+
+### Database Migrations
+
+Create migrations:
+```bash
+npm run migrate:create -- <migration-name>
+```
+
+Migration file structure:
+```javascript
+module.exports = {
+  async up(db) {
+    await db.collection("users").createIndex({ email: 1 }, { unique: true });
+  },
+  async down(db) {
+    await db.collection("users").dropIndex("email_1");
+  },
+};
+```
+
+Run migrations:
+```bash
+npm run migrate:up    # Apply migrations
+npm run migrate:down  # Rollback last migration
+npm run migrate:status # Check migration status
+```
+
+## Environment Variables
+
+Required in `.env.local`:
+```
+MONGODB_URI=mongodb://localhost:27017/boilerplate
+AUTH_SECRET=<generate-with-openssl-rand-base64-32>
+AUTH_TRUST_HOST=true
+```
+
+## Commands
+
+```bash
+# Development
+npm run dev           # Start development server
+npm run build         # Build for production
+npm run start         # Start production server
+npm run lint          # Run ESLint
+
+# Database
+npm run migrate:up    # Apply migrations
+npm run migrate:down  # Rollback migration
+npm run seed:user     # Create admin user
+npm run change-password <email> <password>
+
+# Docker
+npm run docker:dev    # Start containers
+npm run docker:down   # Stop containers
+```
+
+## API Patterns
+
+### Error Handling
+
+Use TRPCError for consistent error responses:
+
+```typescript
+import { TRPCError } from "@trpc/server";
+
+throw new TRPCError({ code: "NOT_FOUND", message: "Resource not found" });
+throw new TRPCError({ code: "CONFLICT", message: "Resource already exists" });
+throw new TRPCError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid input" });
+```
+
+### Response Patterns
+
+Return consistent response shapes:
+
+```typescript
+// Single resource
+return {
+  id: doc._id.toString(),
+  name: doc.name,
+  email: doc.email,
+  role: doc.role,
+  createdAt: doc.createdAt,
+};
+
+// List
+return items.map((item) => ({
+  id: item._id.toString(),
+  // ... fields
+}));
+
+// Mutation success
+return { success: true };
+```
+
+## Best Practices
+
+1. **Always use TypeScript** - No `any` types, leverage Zod for runtime validation
+2. **Server Components first** - Only use `"use client"` when necessary
+3. **Centralize database connection** - Always use `connectToDatabase()` helper
+4. **Keep routers focused** - One router per domain/feature
+5. **Use appropriate procedures** - `publicProcedure`, `protectedProcedure`, `adminProcedure`
+6. **Transform MongoDB docs** - Convert `_id` to `id` string in responses
+7. **Validate all inputs** - Use Zod schemas for tRPC inputs
+8. **Handle loading states** - Always account for `isLoading` in queries
+9. **Use proper form validation** - react-hook-form with @hookform/resolvers/zod
+10. **Reuse UI components** - Always check `@/components` before creating new UI elements
+11. **Follow the design system** - Use design tokens and consistent styling
+12. **Mobile-first responsive** - Design for mobile, enhance for desktop
+13. **Role-based UI** - Conditionally render based on `session.user.role`
