@@ -16,19 +16,25 @@ This document describes the deployment process for the TechCreator Inventory Buy
 
 ## Overview
 
-The application uses a tag-based deployment strategy with GitHub Actions and Vercel. When you push a tag with a specific prefix (`dev/`, `uat/`, or `prd/`), it automatically triggers a deployment to the corresponding environment.
+The application uses separate CI/CD pipelines:
+
+- **CI (Continuous Integration)**: Runs on every push and pull request to validate code quality (linting, type-checking, build)
+- **CD (Continuous Deployment)**: Triggered by tags to deploy to specific environments
+
+When you push a tag with a specific prefix (`dev/`, `uat/`, or `prd/`), it automatically triggers a deployment to the corresponding environment.
 
 ## Environments
 
 The project maintains three separate environments:
 
-| Environment | Purpose | Tag Prefix | Auto-Migration |
-|------------|---------|------------|----------------|
-| **Development** | Testing new features and bug fixes | `dev/v*` | ✅ Yes |
-| **UAT** | User acceptance testing and staging | `uat/v*` | ✅ Yes |
-| **Production** | Live application for end users | `prd/v*` | ❌ Manual review required |
+| Environment     | Purpose                             | Tag Prefix | Auto-Migration            |
+| --------------- | ----------------------------------- | ---------- | ------------------------- |
+| **Development** | Testing new features and bug fixes  | `dev/v*`   | ✅ Yes                    |
+| **UAT**         | User acceptance testing and staging | `uat/v*`   | ✅ Yes                    |
+| **Production**  | Live application for end users      | `prd/v*`   | ❌ Manual review required |
 
 Each environment has its own:
+
 - Vercel project
 - MongoDB database
 - Environment variables
@@ -39,16 +45,19 @@ Each environment has its own:
 ### 1. Vercel Setup
 
 Create three separate Vercel projects (recommended for better isolation):
+
 - `techcreator-inventory-dev`
 - `techcreator-inventory-uat`
 - `techcreator-inventory-prd`
 
 For each project, obtain:
+
 - `VERCEL_ORG_ID` - Your Vercel organization/team ID
 - `VERCEL_PROJECT_ID` - Unique project ID for each environment
 - `VERCEL_TOKEN` - Personal access token (can be shared across projects)
 
 To find these values:
+
 1. Go to Vercel Dashboard → Settings
 2. Copy the Organization ID (Team ID)
 3. Go to Project Settings → General → Project ID
@@ -59,6 +68,7 @@ To find these values:
 Add the following secrets to your GitHub repository (Settings → Secrets and variables → Actions):
 
 #### Vercel Configuration
+
 ```
 VERCEL_TOKEN              # Your Vercel personal access token
 VERCEL_ORG_ID            # Your Vercel organization/team ID
@@ -68,6 +78,7 @@ VERCEL_PROJECT_ID_PRD    # Production project ID
 ```
 
 #### Environment-Specific Database Credentials
+
 ```
 MONGODB_URI_DEV          # Development MongoDB connection string
 MONGODB_URI_UAT          # UAT MongoDB connection string
@@ -75,6 +86,7 @@ MONGODB_URI_PRD          # Production MongoDB connection string
 ```
 
 #### Environment-Specific Auth Secrets
+
 ```
 AUTH_SECRET_DEV          # Development NextAuth secret
 AUTH_SECRET_UAT          # UAT NextAuth secret
@@ -82,6 +94,7 @@ AUTH_SECRET_PRD          # Production NextAuth secret
 ```
 
 > **Note**: Generate secure random strings for AUTH_SECRET using:
+>
 > ```bash
 > openssl rand -base64 32
 > ```
@@ -91,6 +104,7 @@ AUTH_SECRET_PRD          # Production NextAuth secret
 Configure the following environment variables in each Vercel project dashboard (Settings → Environment Variables):
 
 **Required for all environments:**
+
 ```
 MONGODB_URI              # MongoDB connection string
 AUTH_SECRET              # NextAuth secret key
@@ -105,18 +119,20 @@ NEXTAUTH_URL             # Full URL of your deployment (e.g., https://app-dev.ve
 
 1. Create a feature branch and make your changes
 2. Test locally: `npm run dev`
-3. Run quality checks:
+3. Run quality checks locally (optional, as CI will run them):
    ```bash
    npm run lint
    npm run type-check
    npm run build
    ```
 
-### Step 2: Merge to Main
+### Step 2: Create Pull Request and Merge
 
-1. Create a pull request to `main`
-2. Review and merge after approval
-3. Pull the latest main branch locally:
+1. Create a pull request to `main` or `develop`
+2. **CI will automatically run** - check GitHub Actions for results
+3. Review CI results and make fixes if needed
+4. Merge after approval and CI passes
+5. Pull the latest main branch locally:
    ```bash
    git checkout main
    git pull origin main
@@ -127,18 +143,21 @@ NEXTAUTH_URL             # Full URL of your deployment (e.g., https://app-dev.ve
 Choose the appropriate environment and create a tag:
 
 #### Development Deployment
+
 ```bash
 git tag dev/v1.2.3
 git push origin dev/v1.2.3
 ```
 
 #### UAT Deployment
+
 ```bash
 git tag uat/v1.2.3
 git push origin uat/v1.2.3
 ```
 
 #### Production Deployment
+
 ```bash
 # ⚠️ IMPORTANT: Ensure UAT testing is complete and migrations are reviewed
 git tag prd/v1.2.3
@@ -204,13 +223,13 @@ Environment variables are managed in two places:
 
 ### Required Variables Reference
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `MONGODB_URI` | MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/dbname` |
-| `AUTH_SECRET` | NextAuth encryption secret | `random-32-char-string` |
-| `AUTH_TRUST_HOST` | Trust proxy headers | `true` |
-| `NODE_ENV` | Node environment | `production` |
-| `NEXTAUTH_URL` | Full application URL | `https://app.vercel.app` |
+| Variable          | Description                | Example                                              |
+| ----------------- | -------------------------- | ---------------------------------------------------- |
+| `MONGODB_URI`     | MongoDB connection string  | `mongodb+srv://user:pass@cluster.mongodb.net/dbname` |
+| `AUTH_SECRET`     | NextAuth encryption secret | `random-32-char-string`                              |
+| `AUTH_TRUST_HOST` | Trust proxy headers        | `true`                                               |
+| `NODE_ENV`        | Node environment           | `production`                                         |
+| `NEXTAUTH_URL`    | Full application URL       | `https://app.vercel.app`                             |
 
 ## Rollback Procedures
 
@@ -227,11 +246,13 @@ Environment variables are managed in two places:
 ### Method 2: Redeploy Previous Version via Tag
 
 1. Identify the last working version:
+
    ```bash
    git tag --list 'prd/v*' --sort=-version:refname
    ```
 
 2. Create a new rollback tag:
+
    ```bash
    # If last working version was prd/v1.2.0
    git checkout prd/v1.2.0
@@ -246,11 +267,13 @@ Environment variables are managed in two places:
 If migrations caused issues:
 
 1. Check migration status:
+
    ```bash
    npm run migrate:status
    ```
 
 2. Rollback last migration:
+
    ```bash
    npm run migrate:down
    ```
@@ -274,6 +297,7 @@ If migrations caused issues:
 **Symptoms**: Linting or type-checking fails in CI/CD
 
 **Solutions**:
+
 ```bash
 # Run checks locally
 npm run lint
@@ -291,11 +315,13 @@ npx tsc --noEmit
 **Symptoms**: Migration check fails, deployment stops
 
 **Common Issues**:
+
 1. **Connection timeout**: Check MONGODB_URI in GitHub Secrets
 2. **Authentication failed**: Verify MongoDB credentials
 3. **Network restrictions**: Ensure GitHub Actions IP can access MongoDB
 
 **Debug Steps**:
+
 ```bash
 # Test connection locally
 MONGODB_URI="your-connection-string" npm run migrate:status
@@ -312,6 +338,7 @@ ls -la migrations/
 **Symptoms**: Build succeeds but Vercel deploy fails
 
 **Solutions**:
+
 1. Verify `VERCEL_TOKEN` is valid and not expired
 2. Check `VERCEL_PROJECT_ID` matches the correct environment
 3. Ensure `VERCEL_ORG_ID` is correct
@@ -324,12 +351,14 @@ ls -la migrations/
 **Symptoms**: Deployment succeeds but app shows errors
 
 **Common Issues**:
+
 1. **Missing environment variables**: Check Vercel project settings
 2. **Database connection**: Verify MONGODB_URI in Vercel
 3. **Authentication issues**: Ensure AUTH_SECRET and NEXTAUTH_URL are set
 4. **CORS errors**: Check AUTH_TRUST_HOST=true is set
 
 **Debug Steps**:
+
 1. Check Vercel deployment logs: Project → Deployments → Select deployment → Logs
 2. Check Runtime Logs: Project → Logs tab
 3. Test API endpoints: `/api/auth/session`
@@ -340,6 +369,7 @@ ls -la migrations/
 **Symptoms**: `git push` fails with "tag already exists"
 
 **Solution**:
+
 ```bash
 # Delete local tag
 git tag -d dev/v1.0.0
@@ -357,6 +387,7 @@ git push origin dev/v1.0.1
 **Symptoms**: Post-deployment validation fails
 
 **Solutions**:
+
 1. Check if deployment URL is accessible
 2. Verify application starts correctly (check logs)
 3. Ensure no critical environment variables are missing
@@ -364,41 +395,57 @@ git push origin dev/v1.0.1
 
 ## CI/CD Pipeline
 
-### Pipeline Stages
+### Continuous Integration (CI)
 
-The GitHub Actions workflow consists of the following stages:
+The CI pipeline (`.github/workflows/ci.yml`) runs automatically on:
 
-1. **Setup** (5-10 seconds)
-   - Determines target environment from tag
-   - Sets environment-specific variables
+- Push to `main`, `develop`, or feature branches
+- Pull requests to `main` or `develop`
 
-2. **Quality Checks** (2-3 minutes)
+**CI Stages** (2-3 minutes):
+
+1. **Quality Checks**
    - Checkout code
    - Install dependencies
    - Run linting (`npm run lint`)
    - Run type checking (`npm run type-check`)
    - Build application (`npm run build`)
 
-3. **Migration Check** (30-60 seconds)
+This ensures all code meets quality standards before merging or deployment.
+
+### Continuous Deployment (CD)
+
+The CD pipeline (`.github/workflows/deploy.yml`) runs only on tag pushes and consists of:
+
+**CD Stages** (4-6 minutes):
+
+1. **Setup** (5-10 seconds)
+   - Determines target environment from tag
+   - Sets environment-specific variables
+
+2. **Migration Check** (30-60 seconds)
    - Check migration status
    - Run migrations (auto for dev/uat, manual review for prd)
 
-4. **Deploy** (3-5 minutes)
+3. **Deploy** (3-5 minutes)
    - Install Vercel CLI
    - Pull Vercel environment configuration
    - Build project artifacts
    - Deploy to Vercel production
    - Generate deployment URL
 
-5. **Post-Deploy** (15-20 seconds)
+4. **Post-Deploy** (15-20 seconds)
    - Wait for deployment stabilization
    - Perform health check
    - Report deployment status
 
-**Total Duration**: ~6-9 minutes
+**Total CD Duration**: ~4-6 minutes
 
 ### Pipeline Features
 
+- ✅ Separated CI and CD for better control
+- ✅ CI runs on every push/PR for fast feedback
+- ✅ CD triggered only by tags for controlled deployments
 - ✅ Automated linting and type checking
 - ✅ Build verification before deployment
 - ✅ Database migration validation
@@ -408,18 +455,27 @@ The GitHub Actions workflow consists of the following stages:
 - ✅ Environment-specific configuration
 - ✅ Production safety checks
 
-### Skipping CI/CD
+### Workflow Triggers
 
-To push changes without triggering deployment, avoid pushing tags:
+**CI Workflow** (`.github/workflows/ci.yml`):
 
-```bash
-git push origin main  # No deployment triggered
-```
+- Triggered by: Pushes and pull requests
+- Branches: `main`, `develop`, `feature/**`, `bugfix/**`, `hotfix/**`
+- Purpose: Validate code quality
 
-Only tags matching the pattern trigger deployments:
-- `dev/v*` → Development
-- `uat/v*` → UAT
-- `prd/v*` → Production
+**CD Workflow** (`.github/workflows/deploy.yml`):
+
+- Triggered by: Tags only
+- Tag patterns: `dev/v*`, `uat/v*`, `prd/v*`
+- Purpose: Deploy to environments
+
+### Benefits of Separation
+
+1. **Faster Feedback**: CI runs quickly on every commit without deployment overhead
+2. **Controlled Deployments**: Only tags trigger deployments, preventing accidental releases
+3. **Independent Scaling**: Can run multiple CI checks in parallel without affecting deployments
+4. **Better Visibility**: Clear separation between code validation and deployment status
+5. **Resource Efficiency**: Deployment resources only used when actually deploying
 
 ## Best Practices
 
