@@ -142,7 +142,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      MONGODB_URI: ${{ secrets.MONGODB_URI_DEV }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
 
   # ============================================
   # UAT environment deployment
@@ -163,7 +163,7 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      MONGODB_URI: ${{ secrets.MONGODB_URI_UAT }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
 
   # ============================================
   # Production environment deployment
@@ -186,4 +186,4 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      MONGODB_URI: ${{ secrets.MONGODB_URI_PRD }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
