@@ -402,16 +402,41 @@ The CI pipeline (`.github/workflows/ci.yml`) runs automatically on:
 - Push to `main`, `develop`, or feature branches
 - Pull requests to `main` or `develop`
 
-**CI Stages** (2-3 minutes):
+**CI Jobs** (runs in parallel after dependency installation):
 
-1. **Quality Checks**
+1. **Install Dependencies** (~30-60 seconds)
    - Checkout code
-   - Install dependencies
-   - Run linting (`npm run lint`)
-   - Run type checking (`npm run type-check`)
-   - Build application (`npm run build`)
+   - Setup Node.js with caching
+   - Install dependencies (`npm ci`)
+   - Cache `node_modules` for other jobs
 
-This ensures all code meets quality standards before merging or deployment.
+2. **Lint Code** (runs in parallel, ~10-20 seconds)
+   - Restore dependencies from cache
+   - Run ESLint (`npm run lint`)
+
+3. **Type Check** (runs in parallel, ~15-30 seconds)
+   - Restore dependencies from cache
+   - Run TypeScript compiler (`npm run type-check`)
+
+4. **Build Application** (runs in parallel, ~1-2 minutes)
+   - Restore dependencies from cache
+   - Build Next.js application (`npm run build`)
+   - Upload build artifacts for reference
+
+5. **CI Summary** (~5 seconds)
+   - Wait for all parallel jobs to complete
+   - Generate comprehensive status summary
+   - Mark CI as passed/failed based on all job results
+
+**Total CI Duration**: ~2-3 minutes (thanks to parallelization)
+
+**Benefits of Separated Jobs**:
+
+- ✅ **Parallel Execution**: Lint, type-check, and build run simultaneously
+- ✅ **Faster Feedback**: See which specific check failed immediately
+- ✅ **Resource Efficiency**: Shared dependency cache across jobs
+- ✅ **Better Debugging**: Isolated logs per job
+- ✅ **Clearer Status**: GitHub UI shows status of each check independently
 
 ### Continuous Deployment (CD)
 
