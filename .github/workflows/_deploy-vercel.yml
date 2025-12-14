@@ -90,6 +90,9 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
+      - name: Pull Vercel Project Settings
+        run: vercel pull --yes --environment=${{ inputs.vercel-environment }} --token=${{ secrets.VERCEL_TOKEN }}
+
       - name: Download .env.local from Vercel
         run: |
           echo "Fetching environment variables from Vercel for ${{ inputs.environment }} environment..."
