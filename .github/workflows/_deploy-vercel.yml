@@ -109,12 +109,19 @@ jobs:
           # uat/v* -> vercel deploy --target=uat
           # prd/v* -> vercel deploy --prod
           if [ "${{ inputs.deploy-target }}" == "production" ]; then
+            DEPLOY_CMD="vercel deploy --prod"
+            echo "🚀 Running: $DEPLOY_CMD"
             url=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }})
           elif [ "${{ inputs.deploy-target }}" == "uat" ]; then
+            DEPLOY_CMD="vercel deploy --target=uat"
+            echo "🧪 Running: $DEPLOY_CMD"
             url=$(vercel deploy --target=uat --token=${{ secrets.VERCEL_TOKEN }})
           else
+            DEPLOY_CMD="vercel deploy"
+            echo "🔍 Running: $DEPLOY_CMD"
             url=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }})
           fi
+          echo "deploy-command=$DEPLOY_CMD" >> $GITHUB_OUTPUT
           echo "deployment-url=$url" >> $GITHUB_OUTPUT
 
       - name: Set Custom Domain Alias
@@ -129,6 +136,7 @@ jobs:
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deploy Command** | \`${{ steps.deploy.outputs.deploy-command }}\` |" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ steps.version.outputs.version }}" ]; then
             echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
             echo "| **Tag** | \`${{ steps.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -136,5 +144,5 @@ jobs:
           if [ -n "${{ inputs.alias }}" ]; then
             echo "| **URL** | https://${{ inputs.alias }} |" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "| **Deployment** | ${{ steps.deploy.outputs.deployment-url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployment URL** | [${{ steps.deploy.outputs.deployment-url }}](${{ steps.deploy.outputs.deployment-url }}) |" >> $GITHUB_STEP_SUMMARY
           echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
