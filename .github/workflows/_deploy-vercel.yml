@@ -108,12 +108,14 @@ jobs:
           # dev/v* -> vercel deploy
           # uat/v* -> vercel deploy --target=uat
           # prd/v* -> vercel deploy --prod
-          if [ "${{ inputs.deploy-target }}" == "production" ]; then 
-            vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+          if [ "${{ inputs.deploy-target }}" == "production" ]; then
+            url=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }})
           elif [ "${{ inputs.deploy-target }}" == "uat" ]; then
-            vercel deploy --target=uat --token=${{ secrets.VERCEL_TOKEN }}
+            url=$(vercel deploy --target=uat --token=${{ secrets.VERCEL_TOKEN }})
           else
-            vercel deploy --token=${{ secrets.VERCEL_TOKEN }}
+            url=$(vercel deploy --token=${{ secrets.VERCEL_TOKEN }})
+          fi
+          echo "deployment-url=$url" >> $GITHUB_OUTPUT
 
       - name: Set Custom Domain Alias
         if: inputs.alias != ''
