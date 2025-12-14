@@ -74,7 +74,8 @@ jobs:
           vercel env pull .env.local \
             --environment=production \
             --token=${{ secrets.VERCEL_TOKEN }} \
-            --scope=${{ secrets.VERCEL_ORG_ID }}
+            --scope=${{ secrets.VERCEL_ORG_ID }} \
+            --project=${{ needs.setup.outputs.project-id }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ needs.setup.outputs.project-id }}
