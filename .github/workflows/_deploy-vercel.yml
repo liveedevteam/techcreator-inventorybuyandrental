@@ -70,6 +70,10 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.run-migrations == true
 
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,9 +96,6 @@ jobs:
           vercel env pull .env.local \
             --environment=${{ inputs.vercel-environment }} \
             --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Check migration status
         env:
