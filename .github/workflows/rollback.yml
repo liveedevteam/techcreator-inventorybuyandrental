@@ -1,0 +1,196 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to rollback"
+        required: true
+        type: choice
+        options:
+          - development
+          - uat
+          - production
+      deployment_url:
+        description: "Previous deployment URL to rollback to (from Vercel dashboard)"
+        required: true
+        type: string
+      reason:
+        description: "Reason for rollback"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  deployments: write
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  confirm-rollback:
+    name: Confirm Rollback
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}-rollback
+
+    steps:
+      - name: Display rollback information
+        run: |
+          echo "## ⚠️ Rollback Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target URL** | ${{ inputs.deployment_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Reason** | ${{ inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Initiated by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⏳ Waiting for manual approval..." >> $GITHUB_STEP_SUMMARY
+
+  rollback:
+    name: Execute Rollback
+    runs-on: ubuntu-latest
+    needs: [confirm-rollback]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Determine Vercel configuration
+        id: config
+        run: |
+          case "${{ inputs.environment }}" in
+            development)
+              echo "project_id=${{ secrets.VERCEL_PROJECT_ID_DEV }}" >> $GITHUB_OUTPUT
+              echo "alias=${{ vars.VERCEL_ALIAS_DEV }}" >> $GITHUB_OUTPUT
+              echo "is_production=false" >> $GITHUB_OUTPUT
+              ;;
+            uat)
+              echo "project_id=${{ secrets.VERCEL_PROJECT_ID_UAT }}" >> $GITHUB_OUTPUT
+              echo "alias=${{ vars.VERCEL_ALIAS_UAT }}" >> $GITHUB_OUTPUT
+              echo "is_production=false" >> $GITHUB_OUTPUT
+              ;;
+            production)
+              echo "project_id=${{ secrets.VERCEL_PROJECT_ID_PRD }}" >> $GITHUB_OUTPUT
+              echo "alias=${{ vars.VERCEL_ALIAS_PRD }}" >> $GITHUB_OUTPUT
+              echo "is_production=true" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Verify deployment exists
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ steps.config.outputs.project_id }}
+        run: |
+          echo "Verifying deployment URL: ${{ inputs.deployment_url }}"
+
+          # Extract deployment ID from URL
+          DEPLOYMENT_ID=$(echo "${{ inputs.deployment_url }}" | sed -n 's/.*\/\/\([^.]*\).*/\1/p')
+          echo "Deployment ID: $DEPLOYMENT_ID"
+
+          # Check if deployment exists (this will fail if deployment doesn't exist)
+          vercel inspect "${{ inputs.deployment_url }}" --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Promote deployment
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ steps.config.outputs.project_id }}
+        run: |
+          echo "Promoting deployment to ${{ inputs.environment }}..."
+
+          if [ "${{ steps.config.outputs.is_production }}" == "true" ]; then
+            echo "Promoting to production..."
+            vercel promote "${{ inputs.deployment_url }}" --token=${{ secrets.VERCEL_TOKEN }}
+          fi
+
+          if [ -n "${{ steps.config.outputs.alias }}" ]; then
+            echo "Setting alias: ${{ steps.config.outputs.alias }}"
+            vercel alias "${{ inputs.deployment_url }}" "${{ steps.config.outputs.alias }}" --token=${{ secrets.VERCEL_TOKEN }}
+          fi
+
+      - name: Verify rollback
+        run: |
+          echo "Waiting 10 seconds for changes to propagate..."
+          sleep 10
+
+          TARGET_URL="${{ steps.config.outputs.alias && format('https://{0}', steps.config.outputs.alias) || inputs.deployment_url }}"
+          echo "Checking health of $TARGET_URL"
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET_URL")
+
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
+            echo "✅ Rollback verification passed (HTTP $HTTP_STATUS)"
+          else
+            echo "❌ Rollback verification failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+      - name: Create rollback summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "## ✅ Rollback Successful" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Deployment URL** | ${{ inputs.deployment_url }} |" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${{ steps.config.outputs.alias }}" ]; then
+              echo "| **Alias** | https://${{ steps.config.outputs.alias }} |" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "| **Reason** | ${{ inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Rolled back by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Timestamp** | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Rollback Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The rollback to ${{ inputs.environment }} failed." >> $GITHUB_STEP_SUMMARY
+            echo "Please check the logs and try again or contact support." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Create incident issue
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## 🔄 Deployment Rollback Executed
+
+            A deployment rollback was performed on **${{ inputs.environment }}** environment.
+
+            ### Rollback Details
+            | Property | Value |
+            |----------|-------|
+            | **Environment** | ${{ inputs.environment }} |
+            | **Previous Deployment** | ${{ inputs.deployment_url }} |
+            | **Reason** | ${{ inputs.reason }} |
+            | **Executed by** | @${{ github.actor }} |
+            | **Timestamp** | ${new Date().toISOString()} |
+            | **Workflow Run** | [View Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) |
+
+            ### Next Steps
+            - [ ] Investigate the issue that caused the rollback
+            - [ ] Document the incident
+            - [ ] Fix the underlying problem
+            - [ ] Test the fix in lower environments
+            - [ ] Schedule a new deployment
+
+            ---
+            *This issue was automatically created by the rollback workflow.*`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Rollback] ${{ inputs.environment }} - ${new Date().toISOString().split('T')[0]}`,
+              body: body,
+              labels: ['rollback', 'incident', '${{ inputs.environment }}']
+            });

@@ -1,0 +1,234 @@
+# Reusable workflow for deploying to Vercel
+# This workflow is called by the main deploy.yml workflow
+# Prefix with underscore to indicate it's a reusable/internal workflow
+
+name: Deploy to Vercel (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Deployment environment (preview, development, uat, production)"
+        required: true
+        type: string
+      vercel-environment:
+        description: "Vercel environment setting (preview or production)"
+        required: true
+        type: string
+      is-production:
+        description: "Whether this is a production deployment"
+        required: false
+        type: boolean
+        default: false
+      alias:
+        description: "Custom domain alias for the deployment"
+        required: false
+        type: string
+      tag-prefix:
+        description: "Tag prefix for version extraction (e.g., dev, uat, prd)"
+        required: false
+        type: string
+      summary-emoji:
+        description: "Emoji for the deployment summary"
+        required: false
+        type: string
+        default: "🚀"
+      summary-title:
+        description: "Title for the deployment summary"
+        required: false
+        type: string
+        default: "Deployment Complete"
+      run-migrations:
+        description: "Whether to run database migrations"
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      deployment-url:
+        description: "The Vercel deployment URL"
+        value: ${{ jobs.deploy.outputs.deployment-url }}
+      version:
+        description: "The extracted version from tag"
+        value: ${{ jobs.deploy.outputs.version }}
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_PROJECT_ID:
+        required: true
+      MONGODB_URI:
+        required: false
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # Database migration validation
+  migration-check:
+    name: Migration Check
+    runs-on: ubuntu-latest
+    if: inputs.run-migrations == true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Download .env.local from Vercel
+        run: |
+          echo "Fetching environment variables from Vercel for ${{ inputs.environment }} environment..."
+          vercel env pull .env.local \
+            --environment=${{ inputs.vercel-environment }} \
+            --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Check migration status
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          echo "Checking migration status for ${{ inputs.environment }} environment..."
+          npm run migrate:status
+
+      - name: Run migrations (non-production only)
+        if: inputs.is-production != true
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          echo "Running migrations for ${{ inputs.environment }} environment..."
+          npm run migrate:up
+
+      - name: Validate migrations for production
+        if: inputs.is-production == true
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        run: |
+          echo "⚠️  Production deployment detected!"
+          echo "Please ensure migrations have been reviewed and tested in UAT."
+          echo "Run migrations manually if needed before proceeding."
+          npm run migrate:status
+
+  # Deploy to Vercel
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [migration-check]
+    if: always() && (needs.migration-check.result == 'success' || needs.migration-check.result == 'skipped')
+
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.alias && format('https://{0}', inputs.alias) || steps.deploy.outputs.deployment-url }}
+
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.deployment-url }}
+      version: ${{ steps.version.outputs.version }}
+
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        if: inputs.tag-prefix != ''
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#${{ inputs.tag-prefix }}/}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Project Settings
+        run: vercel pull --yes --environment=${{ inputs.vercel-environment }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build Project Artifacts
+        run: vercel build ${{ inputs.is-production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt ${{ inputs.is-production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }})
+          echo "deployment-url=$url" >> $GITHUB_OUTPUT
+
+      - name: Set Custom Domain Alias
+        if: inputs.alias != ''
+        run: |
+          vercel alias ${{ steps.deploy.outputs.deployment-url }} ${{ inputs.alias }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Create deployment summary
+        run: |
+          echo "## ${{ inputs.summary-emoji }} ${{ inputs.summary-title }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.version.outputs.version }}" ]; then
+            echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Tag** | \`${{ steps.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -n "${{ inputs.alias }}" ]; then
+            echo "| **URL** | https://${{ inputs.alias }} |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "| **Deployment** | ${{ steps.deploy.outputs.deployment-url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  # Post-deployment validation
+  post-deploy:
+    name: Post-Deployment Validation
+    runs-on: ubuntu-latest
+    needs: [deploy]
+
+    steps:
+      - name: Health check
+        run: |
+          echo "Waiting 10 seconds for deployment to stabilize..."
+          sleep 10
+
+          URL="${{ needs.deploy.outputs.deployment-url }}"
+          echo "Checking health of $URL"
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
+            echo "✅ Health check passed (HTTP $HTTP_STATUS)"
+          else
+            echo "❌ Health check failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment to ${{ inputs.environment }} completed successfully!"
+          else
+            echo "❌ Deployment to ${{ inputs.environment }} failed!"
+          fi

@@ -1,4 +1,4 @@
-name: CD - Deploy to Vercel
+name: Deploy to Vercel
 
 on:
   push:
@@ -6,192 +6,184 @@ on:
       - "dev/v*"
       - "uat/v*"
       - "prd/v*"
+  pull_request:
+    branches:
+      - main
+      - develop
 
-env:
-  NODE_VERSION: "20"
+permissions:
+  contents: read
+  deployments: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # Determine which environment to deploy to based on tag prefix
-  setup:
-    name: Setup Environment
+  # ============================================
+  # Validate production deployment from main branch
+  # ============================================
+  validate-production:
+    name: Validate Production Branch
+    if: startsWith(github.ref, 'refs/tags/prd/v')
     runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.set-env.outputs.environment }}
-      project-id: ${{ steps.set-env.outputs.project-id }}
-      mongodb-uri: ${{ steps.set-env.outputs.mongodb-uri }}
-      auth-secret: ${{ steps.set-env.outputs.auth-secret }}
-    steps:
-      - name: Determine environment from tag
-        id: set-env
-        run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          echo "Tag: $TAG_NAME"
 
-          if [[ $TAG_NAME == dev/* ]]; then
-            echo "environment=dev" >> $GITHUB_OUTPUT
-            echo "project-id=${{ secrets.VERCEL_PROJECT_ID_DEV }}" >> $GITHUB_OUTPUT
-            echo "mongodb-uri=${{ secrets.MONGODB_URI_DEV }}" >> $GITHUB_OUTPUT
-            echo "auth-secret=${{ secrets.AUTH_SECRET_DEV }}" >> $GITHUB_OUTPUT
-          elif [[ $TAG_NAME == uat/* ]]; then
-            echo "environment=uat" >> $GITHUB_OUTPUT
-            echo "project-id=${{ secrets.VERCEL_PROJECT_ID_UAT }}" >> $GITHUB_OUTPUT
-            echo "mongodb-uri=${{ secrets.MONGODB_URI_UAT }}" >> $GITHUB_OUTPUT
-            echo "auth-secret=${{ secrets.AUTH_SECRET_UAT }}" >> $GITHUB_OUTPUT
-          elif [[ $TAG_NAME == prd/* ]]; then
-            echo "environment=prd" >> $GITHUB_OUTPUT
-            echo "project-id=${{ secrets.VERCEL_PROJECT_ID_PRD }}" >> $GITHUB_OUTPUT
-            echo "mongodb-uri=${{ secrets.MONGODB_URI_PRD }}" >> $GITHUB_OUTPUT
-            echo "auth-secret=${{ secrets.AUTH_SECRET_PRD }}" >> $GITHUB_OUTPUT
-          else
-            echo "Invalid tag format: $TAG_NAME"
-            exit 1
-          fi
-
-  # Database migration validation
-  migration-check:
-    name: Migration Check
-    runs-on: ubuntu-latest
-    needs: setup
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Download .env.local from Vercel
+      - name: Verify tag is from main branch
         run: |
-          echo "Fetching environment variables from Vercel for ${{ needs.setup.outputs.environment }} environment..."
-          vercel env pull .env.local \
-            --environment=production \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --scope=${{ secrets.VERCEL_ORG_ID }} \
-            --project=${{ needs.setup.outputs.project-id }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ needs.setup.outputs.project-id }}
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "Checking if tag $TAG is on main branch..."
 
-      - name: Check migration status
-        env:
-          MONGODB_URI: ${{ needs.setup.outputs.mongodb-uri }}
-        run: |
-          echo "Checking migration status for ${{ needs.setup.outputs.environment }} environment..."
-          npm run migrate:status
+          # Get the commit SHA of the tag
+          TAG_COMMIT=$(git rev-list -n 1 "$TAG")
 
-      - name: Run migrations (dev/uat only)
-        if: needs.setup.outputs.environment != 'prd'
-        env:
-          MONGODB_URI: ${{ needs.setup.outputs.mongodb-uri }}
-        run: |
-          echo "Running migrations for ${{ needs.setup.outputs.environment }} environment..."
-          npm run migrate:up
-
-      - name: Validate migrations for production
-        if: needs.setup.outputs.environment == 'prd'
-        env:
-          MONGODB_URI: ${{ needs.setup.outputs.mongodb-uri }}
-        run: |
-          echo "⚠️  Production deployment detected!"
-          echo "Please ensure migrations have been reviewed and tested in UAT."
-          echo "Run migrations manually if needed before proceeding."
-          npm run migrate:status
-
-  # Deploy to Vercel
-  deploy:
-    name: Deploy to Vercel (${{ needs.setup.outputs.environment }})
-    runs-on: ubuntu-latest
-    needs: [setup, migration-check]
-    environment:
-      name: ${{ needs.setup.outputs.environment }}
-      url: ${{ steps.deploy.outputs.url }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Pull Vercel Environment Information
-        run: |
-          vercel pull --yes \
-            --environment=production \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --scope=${{ secrets.VERCEL_ORG_ID }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ needs.setup.outputs.project-id }}
-
-      - name: Build Project Artifacts
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ needs.setup.outputs.project-id }}
-
-      - name: Deploy to Vercel
-        id: deploy
-        run: |
-          URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
-          echo "url=$URL" >> $GITHUB_OUTPUT
-          echo "Deployed to: $URL"
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ needs.setup.outputs.project-id }}
-
-      - name: Deployment Summary
-        run: |
-          echo "## Deployment Successful! 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ needs.setup.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Tag**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL**: ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-
-  # Post-deployment validation
-  post-deploy:
-    name: Post-Deployment Validation
-    runs-on: ubuntu-latest
-    needs: [setup, deploy]
-    steps:
-      - name: Health check
-        run: |
-          echo "Waiting 10 seconds for deployment to stabilize..."
-          sleep 10
-
-          URL="${{ needs.deploy.outputs.url }}"
-          echo "Checking health of $URL"
-
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
-
-          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
-            echo "✅ Health check passed (HTTP $HTTP_STATUS)"
+          # Check if this commit exists in main branch
+          if git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+            echo "✅ Tag $TAG is from main branch"
+            echo "Commit: $TAG_COMMIT"
           else
-            echo "❌ Health check failed (HTTP $HTTP_STATUS)"
+            echo "❌ ERROR: Tag $TAG is NOT from main branch!"
+            echo "Production deployments must be tagged from the main branch."
             exit 1
           fi
 
-      - name: Notify deployment status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment to ${{ needs.setup.outputs.environment }} completed successfully!"
-          else
-            echo "❌ Deployment to ${{ needs.setup.outputs.environment }} failed!"
-          fi
+  # ============================================
+  # Preview deployment for pull requests
+  # ============================================
+  deploy-preview:
+    name: Preview
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/_deploy-vercel.yml
+    with:
+      environment: preview
+      vercel-environment: preview
+      summary-emoji: "🔍"
+      summary-title: "Preview Deployment Ready"
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  # Comment on PR with preview URL
+  comment-preview:
+    name: Comment Preview URL
+    needs: deploy-preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Comment PR with Preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ needs.deploy-preview.outputs.deployment-url }}';
+            const body = `## 🔍 Preview Deployment
+
+            Your preview deployment is ready!
+
+            | Name | Link |
+            |------|------|
+            | **Preview URL** | [${url}](${url}) |
+            | **Commit** | \`${{ github.sha }}\` |
+
+            ---
+            *Deployed via GitHub Actions*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Preview Deployment')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+  # ============================================
+  # DEV environment deployment
+  # ============================================
+  deploy-dev:
+    name: Development
+    if: startsWith(github.ref, 'refs/tags/dev/v')
+    uses: ./.github/workflows/_deploy-vercel.yml
+    with:
+      environment: development
+      vercel-environment: preview
+      tag-prefix: dev
+      alias: ${{ vars.VERCEL_ALIAS_DEV }}
+      summary-emoji: "🚀"
+      summary-title: "DEV Deployment Complete"
+      run-migrations: true
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_DEV }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI_DEV }}
+
+  # ============================================
+  # UAT environment deployment
+  # ============================================
+  deploy-uat:
+    name: UAT
+    if: startsWith(github.ref, 'refs/tags/uat/v')
+    uses: ./.github/workflows/_deploy-vercel.yml
+    with:
+      environment: uat
+      vercel-environment: preview
+      tag-prefix: uat
+      alias: ${{ vars.VERCEL_ALIAS_UAT }}
+      summary-emoji: "🧪"
+      summary-title: "UAT Deployment Complete"
+      run-migrations: true
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_UAT }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI_UAT }}
+
+  # ============================================
+  # Production environment deployment
+  # ============================================
+  deploy-prd:
+    name: Production
+    if: startsWith(github.ref, 'refs/tags/prd/v')
+    needs: [validate-production]
+    uses: ./.github/workflows/_deploy-vercel.yml
+    with:
+      environment: production
+      vercel-environment: production
+      is-production: true
+      tag-prefix: prd
+      alias: ${{ vars.VERCEL_ALIAS_PRD }}
+      summary-emoji: "🎉"
+      summary-title: "Production Deployment Complete"
+      run-migrations: true
+    secrets:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PRD }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI_PRD }}
