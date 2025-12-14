@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Migration config file (requires CommonJS):
+    "migrate-mongo-config.js",
   ]),
 ]);
 

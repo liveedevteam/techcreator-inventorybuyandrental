@@ -1,6 +1,5 @@
 // In this file you can configure migrate-mongo
-import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" });
+require("dotenv").config({ path: ".env.local" });
 
 const config = {
   mongodb: {
@@ -33,4 +32,3 @@ const config = {
 };
 
 module.exports = config;
-
