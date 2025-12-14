@@ -15,11 +15,11 @@ on:
         description: "Vercel environment setting (preview or production)"
         required: true
         type: string
-      is-production:
-        description: "Whether this is a production deployment"
+      deploy-target:
+        description: "Vercel deploy target (preview, uat, production)"
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: "preview"
       alias:
         description: "Custom domain alias for the deployment"
         required: false
@@ -99,12 +99,23 @@ jobs:
         run: vercel env pull .env.local --yes --environment=${{ inputs.vercel-environment }} --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build Project Artifacts
-        run: vercel build ${{ inputs.is-production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel build ${{ inputs.deploy-target == 'production' && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to Vercel
         id: deploy
         run: |
-          url=$(vercel deploy --prebuilt ${{ inputs.is-production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }})
+          # Determine deploy flags based on target
+          # dev/v* -> vercel deploy (preview)
+          # uat/v* -> vercel deploy --target=uat
+          # prd/v* -> vercel deploy --prod
+          DEPLOY_FLAGS=""
+          if [ "${{ inputs.deploy-target }}" == "production" ]; then
+            DEPLOY_FLAGS="--prod"
+          elif [ "${{ inputs.deploy-target }}" != "preview" ] && [ -n "${{ inputs.deploy-target }}" ]; then
+            DEPLOY_FLAGS="--target=${{ inputs.deploy-target }}"
+          fi
+
+          url=$(vercel deploy --prebuilt $DEPLOY_FLAGS --token=${{ secrets.VERCEL_TOKEN }})
           echo "deployment-url=$url" >> $GITHUB_OUTPUT
 
       - name: Set Custom Domain Alias

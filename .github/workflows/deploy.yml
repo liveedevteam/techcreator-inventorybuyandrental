@@ -91,6 +91,7 @@ jobs:
     with:
       environment: development
       vercel-environment: preview
+      deploy-target: preview
       tag-prefix: dev
       alias: ${{ vars.VERCEL_ALIAS_DEV }}
       summary-emoji: "🚀"
@@ -110,6 +111,7 @@ jobs:
     with:
       environment: uat
       vercel-environment: uat
+      deploy-target: uat
       tag-prefix: uat
       alias: ${{ vars.VERCEL_ALIAS_UAT }}
       summary-emoji: "🧪"
@@ -129,7 +131,7 @@ jobs:
     with:
       environment: production
       vercel-environment: production
-      is-production: true
+      deploy-target: production
       tag-prefix: prd
       alias: ${{ vars.VERCEL_ALIAS_PRD }}
       summary-emoji: "🎉"
