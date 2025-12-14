@@ -10,14 +10,12 @@ import {
   Label,
   Card,
   CardContent,
-  CardHeader,
   AuthAlert,
   BrandSection,
   MobileHeader,
 } from "@/components";
 import { StatusIndicator } from "@/components/common/status-indicator";
 import {
-  Calendar,
   Mail,
   Lock,
   Eye,

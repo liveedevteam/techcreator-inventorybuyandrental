@@ -39,7 +39,8 @@ export function SelectField({
   className,
   id,
 }: SelectFieldProps) {
-  const selectId = id || React.useId();
+  const generatedId = React.useId();
+  const selectId = id || generatedId;
 
   return (
     <div className={cn("space-y-2", className)}>

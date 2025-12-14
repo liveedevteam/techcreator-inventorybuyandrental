@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Upload, FileIcon, X, Folder } from "lucide-react";
+import { FileIcon, X, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 interface FileInputProps {
@@ -31,7 +30,8 @@ export function FileInput({
   className,
   id,
 }: FileInputProps) {
-  const inputId = id || React.useId();
+  const generatedId = React.useId();
+  const inputId = id || generatedId;
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [file, setFile] = React.useState<File | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);

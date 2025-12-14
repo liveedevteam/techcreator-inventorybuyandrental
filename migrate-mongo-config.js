@@ -1,5 +1,6 @@
 // In this file you can configure migrate-mongo
-require("dotenv").config({ path: ".env.local" });
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
 
 const config = {
   mongodb: {
