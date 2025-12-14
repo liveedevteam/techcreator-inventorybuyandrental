@@ -1,5 +1,13 @@
 // In this file you can configure migrate-mongo
-require("dotenv").config({ path: ".env.local" });
+// Load .env.local only if it exists (local development)
+// In CI/CD, environment variables are already set by the workflow
+const fs = require("fs");
+const path = require("path");
+
+const envLocalPath = path.join(__dirname, ".env.local");
+if (fs.existsSync(envLocalPath)) {
+  require("dotenv").config({ path: envLocalPath });
+}
 
 const config = {
   mongodb: {
