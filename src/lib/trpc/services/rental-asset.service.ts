@@ -196,14 +196,14 @@ export async function updateRentalAsset(
     "update",
     "rentalAsset",
     asset._id.toString(),
-    `${product?.name} - ${asset.assetCode}`
+    `${isPopulatedProduct(product) ? product.name : 'Unknown'} - ${asset.assetCode}`
   );
 
   return {
     id: asset._id.toString(),
     productId: asset.productId.toString(),
-    productName: product?.name,
-    productSku: product?.sku,
+    productName: isPopulatedProduct(product) ? product.name : undefined,
+    productSku: isPopulatedProduct(product) ? product.sku : undefined,
     assetCode: asset.assetCode,
     status: asset.status,
     currentRentalId: asset.currentRentalId?.toString(),
@@ -247,7 +247,7 @@ export async function updateAssetStatus(
       },
     },
     { new: true }
-  ).populate("productId", "name sku");
+  ).populate("productId", "name sku").lean();
 
   if (!asset) {
     throw new TRPCError({
@@ -269,15 +269,15 @@ export async function updateAssetStatus(
     "update",
     "rentalAsset",
     asset._id.toString(),
-    `${product?.name} - ${asset.assetCode}`,
+    `${isPopulatedProduct(product) ? product.name : 'Unknown'} - ${asset.assetCode}`,
     changes
   );
 
   return {
     id: asset._id.toString(),
     productId: asset.productId.toString(),
-    productName: product?.name,
-    productSku: product?.sku,
+    productName: isPopulatedProduct(product) ? product.name : undefined,
+    productSku: isPopulatedProduct(product) ? product.sku : undefined,
     assetCode: asset.assetCode,
     status: asset.status,
     currentRentalId: asset.currentRentalId?.toString(),
@@ -311,8 +311,8 @@ export async function getAssetById(input: GetAssetByIdInput): Promise<RentalAsse
   return {
     id: asset._id.toString(),
     productId: asset.productId.toString(),
-    productName: product?.name,
-    productSku: product?.sku,
+    productName: isPopulatedProduct(product) ? product.name : undefined,
+    productSku: isPopulatedProduct(product) ? product.sku : undefined,
     assetCode: asset.assetCode,
     status: asset.status,
     currentRentalId: asset.currentRentalId?.toString(),
@@ -390,8 +390,8 @@ export async function listAssets(
       return {
         id: asset._id.toString(),
         productId: asset.productId.toString(),
-        productName: product?.name,
-        productSku: product?.sku,
+        productName: isPopulatedProduct(product) ? product.name : undefined,
+        productSku: isPopulatedProduct(product) ? product.sku : undefined,
         assetCode: asset.assetCode,
         status: asset.status,
         currentRentalId: asset.currentRentalId?.toString(),
@@ -430,8 +430,8 @@ export async function getAvailableAssets(productId?: string): Promise<RentalAsse
     return {
       id: asset._id.toString(),
       productId: asset.productId.toString(),
-      productName: product?.name,
-      productSku: product?.sku,
+      productName: isPopulatedProduct(product) ? product.name : undefined,
+      productSku: isPopulatedProduct(product) ? product.sku : undefined,
       assetCode: asset.assetCode,
       status: asset.status,
       currentRentalId: asset.currentRentalId?.toString(),
@@ -476,7 +476,7 @@ export async function deleteAsset(
   }
 
   const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
-  const assetName = `${product?.name} - ${asset.assetCode}`;
+  const assetName = `${isPopulatedProduct(product) ? product.name : 'Unknown'} - ${asset.assetCode}`;
 
   await RentalAsset.findByIdAndDelete(input.id);
 

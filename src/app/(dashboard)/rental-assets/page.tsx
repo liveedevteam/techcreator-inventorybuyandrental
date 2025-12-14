@@ -65,12 +65,16 @@ export default function RentalAssetsPage() {
   });
 
 
-  const form = useForm<CreateRentalAssetInput | UpdateRentalAssetInput>({
+  const form = useForm({
     resolver: zodResolver(editingAsset ? updateRentalAssetSchema : createRentalAssetSchema),
-    defaultValues: {
+    defaultValues: editingAsset ? {
+      id: "",
+      assetCode: "",
+      notes: "",
+    } : {
       productId: "",
       assetCode: "",
-      status: "available",
+      status: "available" as const,
       notes: "",
     },
   });
@@ -89,9 +93,9 @@ export default function RentalAssetsPage() {
   const openEditModal = (asset: { id: string; productId: string; assetCode: string; status: string; notes?: string }) => {
     setEditingAsset({ id: asset.id });
     form.reset({
-      productId: asset.productId,
+      id: asset.id,
       assetCode: asset.assetCode,
-      status: asset.status,
+      status: asset.status as RentalAssetStatus,
       notes: asset.notes || "",
     });
     setIsModalOpen(true);

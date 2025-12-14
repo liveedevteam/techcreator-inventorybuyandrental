@@ -54,7 +54,7 @@ export default function RentalsPage() {
     },
   });
 
-  const form = useForm<CreateRentalInput>({
+  const form = useForm({
     resolver: zodResolver(createRentalSchema),
     defaultValues: {
       customerName: "",
@@ -324,9 +324,8 @@ export default function RentalsPage() {
                         <FormControl>
                           <Input
                             type="date"
-                            {...field}
-                            value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                            value={field.value instanceof Date ? field.value.toISOString().split("T")[0] : ""}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : new Date())}
                           />
                         </FormControl>
                         <FormMessage />
@@ -343,9 +342,8 @@ export default function RentalsPage() {
                         <FormControl>
                           <Input
                             type="date"
-                            {...field}
-                            value={field.value ? new Date(field.value).toISOString().split("T")[0] : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                            value={field.value instanceof Date ? field.value.toISOString().split("T")[0] : ""}
+                            onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : new Date())}
                           />
                         </FormControl>
                         <FormMessage />

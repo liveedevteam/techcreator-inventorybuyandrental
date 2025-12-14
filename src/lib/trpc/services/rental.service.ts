@@ -61,6 +61,18 @@ export interface RentalDTO {
   updatedAt: Date;
 }
 
+/**
+ * Populated rental asset type (when assets are populated with product info)
+ */
+type PopulatedRentalAsset = {
+  _id: mongoose.Types.ObjectId;
+  assetCode: string;
+  productId: {
+    _id: mongoose.Types.ObjectId;
+    name: string;
+  } | mongoose.Types.ObjectId;
+};
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -225,7 +237,7 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (populatedRental?.assets as PopulatedRentalAsset[])?.map((asset) => ({
+    assets: (populatedRental?.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
       id: asset._id.toString(),
       assetCode: asset.assetCode,
       productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
@@ -274,12 +286,15 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     });
   }
 
+  // Create a mutable update object with totalAmount property
+  const updateObj: Record<string, unknown> = { ...updateData };
+
   // Recalculate total amount if dates or daily rate changed
   if (updateData.startDate || updateData.endDate || updateData.dailyRate) {
     const startDate = updateData.startDate || oldRental.startDate;
     const endDate = updateData.endDate || oldRental.endDate;
     const dailyRate = updateData.dailyRate || oldRental.dailyRate;
-    updateData.totalAmount = calculateTotalAmount(startDate, endDate, dailyRate);
+    updateObj.totalAmount = calculateTotalAmount(startDate, endDate, dailyRate);
   }
 
   // Handle asset changes
@@ -322,10 +337,10 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     );
     
     // Convert asset IDs to ObjectIds for database
-    updateData.assets = updateData.assets.map((id: string) => new mongoose.Types.ObjectId(id)) as unknown as typeof updateData.assets;
+    updateObj.assets = updateData.assets.map((id: string) => new mongoose.Types.ObjectId(id));
   }
 
-  const rental = await Rental.findByIdAndUpdate(id, { $set: updateData }, { new: true })
+  const rental = await Rental.findByIdAndUpdate(id, { $set: updateObj }, { new: true })
     .populate({
       path: "assets",
       select: "assetCode productId",
@@ -356,11 +371,11 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (rental.assets as PopulatedRentalAsset[])?.map((asset) => ({
+    assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
       id: asset._id.toString(),
       assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
-        ? asset.productId.name 
+      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId
+        ? asset.productId.name
         : undefined,
     })) || [],
     startDate: rental.startDate,
@@ -505,11 +520,11 @@ export async function updateRentalStatus(
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (rental.assets as PopulatedRentalAsset[])?.map((asset) => ({
+    assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
       id: asset._id.toString(),
       assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
-        ? asset.productId.name 
+      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId
+        ? asset.productId.name
         : undefined,
     })) || [],
     startDate: rental.startDate,
@@ -561,11 +576,11 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (rental.assets as PopulatedRentalAsset[])?.map((asset) => ({
+    assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
       id: asset._id.toString(),
       assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
-        ? asset.productId.name 
+      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId
+        ? asset.productId.name
         : undefined,
     })) || [],
     startDate: rental.startDate,
@@ -620,13 +635,14 @@ export async function listRentals(
 
   // Filter by date range (rentals that start or end within range)
   if (input.startDate || input.endDate) {
-    query.$or = [];
+    const orConditions: Array<Record<string, unknown>> = [];
     if (input.startDate) {
-      query.$or.push({ startDate: { $gte: input.startDate } });
+      orConditions.push({ startDate: { $gte: input.startDate } });
     }
     if (input.endDate) {
-      query.$or.push({ endDate: { $lte: input.endDate } });
+      orConditions.push({ endDate: { $lte: input.endDate } });
     }
+    query.$or = orConditions;
   }
 
   // ========================================================================
@@ -700,7 +716,7 @@ export async function listRentals(
         customerPhone: rental.customerPhone,
         customerEmail: rental.customerEmail,
         customerAddress: rental.customerAddress,
-        assets: (rental.assets as PopulatedRentalAsset[])?.map((asset) => ({
+        assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
           id: asset._id.toString(),
           assetCode: asset.assetCode,
           productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
@@ -819,7 +835,7 @@ export async function cancelRental(
     customerPhone: updatedRental.customerPhone,
     customerEmail: updatedRental.customerEmail,
     customerAddress: updatedRental.customerAddress,
-    assets: (updatedRental.assets as PopulatedRentalAsset[])?.map((asset) => ({
+    assets: (updatedRental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
       id: asset._id.toString(),
       assetCode: asset.assetCode,
       productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
