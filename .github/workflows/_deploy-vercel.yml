@@ -38,11 +38,6 @@ on:
         required: false
         type: string
         default: "Deployment Complete"
-      run-migrations:
-        description: "Whether to run database migrations"
-        required: false
-        type: boolean
-        default: false
     outputs:
       deployment-url:
         description: "The Vercel deployment URL"
@@ -57,81 +52,12 @@ on:
         required: true
       VERCEL_PROJECT_ID:
         required: true
-      MONGODB_URI:
-        required: false
-
-env:
-  NODE_VERSION: "20"
 
 jobs:
-  # Database migration validation
-  migration-check:
-    name: Migration Check
-    runs-on: ubuntu-latest
-    if: inputs.run-migrations == true
-
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Pull Vercel Project Settings
-        run: vercel pull --yes --environment=${{ inputs.vercel-environment }} --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Download .env.local from Vercel
-        run: |
-          echo "Fetching environment variables from Vercel for ${{ inputs.environment }} environment..."
-          vercel env pull .env.local \
-            --environment=${{ inputs.vercel-environment }} \
-            --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Check migration status
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        run: |
-          echo "Checking migration status for ${{ inputs.environment }} environment..."
-          npm run migrate:status
-
-      - name: Run migrations (non-production only)
-        if: inputs.is-production != true
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        run: |
-          echo "Running migrations for ${{ inputs.environment }} environment..."
-          npm run migrate:up
-
-      - name: Validate migrations for production
-        if: inputs.is-production == true
-        env:
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-        run: |
-          echo "⚠️  Production deployment detected!"
-          echo "Please ensure migrations have been reviewed and tested in UAT."
-          echo "Run migrations manually if needed before proceeding."
-          npm run migrate:status
-
-  # Deploy to Vercel
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [migration-check]
-    if: always() && (needs.migration-check.result == 'success' || needs.migration-check.result == 'skipped')
 
     environment:
       name: ${{ inputs.environment }}
@@ -159,19 +85,18 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: ./.github/actions/setup-node
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
+          install-dependencies: "false"
 
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install -g vercel@latest
 
       - name: Pull Vercel Project Settings
         run: vercel pull --yes --environment=${{ inputs.vercel-environment }} --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Pull Environment Variables
+        run: vercel env pull .env.local --yes --environment=${{ inputs.vercel-environment }} --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build Project Artifacts
         run: vercel build ${{ inputs.is-production && '--prod' || '' }} --token=${{ secrets.VERCEL_TOKEN }}
@@ -203,36 +128,3 @@ jobs:
           fi
           echo "| **Deployment** | ${{ steps.deploy.outputs.deployment-url }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-
-  # Post-deployment validation
-  post-deploy:
-    name: Post-Deployment Validation
-    runs-on: ubuntu-latest
-    needs: [deploy]
-
-    steps:
-      - name: Health check
-        run: |
-          echo "Waiting 10 seconds for deployment to stabilize..."
-          sleep 10
-
-          URL="${{ needs.deploy.outputs.deployment-url }}"
-          echo "Checking health of $URL"
-
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
-
-          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 301 ] || [ "$HTTP_STATUS" -eq 302 ]; then
-            echo "✅ Health check passed (HTTP $HTTP_STATUS)"
-          else
-            echo "❌ Health check failed (HTTP $HTTP_STATUS)"
-            exit 1
-          fi
-
-      - name: Notify deployment status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment to ${{ inputs.environment }} completed successfully!"
-          else
-            echo "❌ Deployment to ${{ inputs.environment }} failed!"
-          fi
