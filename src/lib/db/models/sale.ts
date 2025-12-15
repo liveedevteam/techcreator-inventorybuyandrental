@@ -1,6 +1,6 @@
 /**
  * Sale Model
- * 
+ *
  * Mongoose model for sales transactions.
  * Tracks customer information, sold items, pricing, and generates bills.
  */
@@ -46,6 +46,7 @@ export interface ISale {
   discount: number;
   tax: number;
   totalAmount: number;
+  deposit: number;
   paymentMethod?: string;
   paymentStatus: "pending" | "paid" | "partial";
   paidAmount: number;
@@ -104,7 +105,7 @@ const saleItemSchema = new Schema<ISaleItem>(
 
 /**
  * Sale schema with validation rules
- * 
+ *
  * Fields:
  * - billNumber: Unique bill identifier (format: BILL-YYYYMMDD-NNNN)
  * - customerName: Customer's name (required, 1-200 chars)
@@ -128,7 +129,7 @@ const saleSchema = new Schema<ISale>(
     // ========================================================================
     // Sale Identification
     // ========================================================================
-    
+
     billNumber: {
       type: String,
       required: [true, "Bill number is required"],
@@ -140,7 +141,7 @@ const saleSchema = new Schema<ISale>(
     // ========================================================================
     // Customer Information
     // ========================================================================
-    
+
     customerName: {
       type: String,
       required: [true, "Customer name is required"],
@@ -168,7 +169,7 @@ const saleSchema = new Schema<ISale>(
     // ========================================================================
     // Sale Items
     // ========================================================================
-    
+
     items: {
       type: [saleItemSchema],
       required: [true, "At least one item is required"],
@@ -181,7 +182,7 @@ const saleSchema = new Schema<ISale>(
     // ========================================================================
     // Pricing and Financials
     // ========================================================================
-    
+
     subtotal: {
       type: Number,
       required: [true, "Subtotal is required"],
@@ -204,6 +205,12 @@ const saleSchema = new Schema<ISale>(
       required: [true, "Total amount is required"],
       min: [0, "Total amount cannot be negative"],
     },
+    deposit: {
+      type: Number,
+      required: [true, "Deposit is required"],
+      min: [0, "Deposit cannot be negative"],
+      default: 0,
+    },
     paymentMethod: {
       type: String,
       trim: true,
@@ -225,7 +232,7 @@ const saleSchema = new Schema<ISale>(
     // ========================================================================
     // Status and Metadata
     // ========================================================================
-    
+
     status: {
       type: String,
       enum: ["pending", "completed", "cancelled"],
@@ -241,7 +248,7 @@ const saleSchema = new Schema<ISale>(
     // ========================================================================
     // Audit Fields
     // ========================================================================
-    
+
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -264,8 +271,6 @@ saleSchema.index({ status: 1 });
 saleSchema.index({ paymentStatus: 1 });
 
 // Prevent model recompilation during hot reload
-const Sale =
-  (mongoose.models.Sale as SaleModel) ||
-  mongoose.model<ISale>("Sale", saleSchema);
+const Sale = (mongoose.models.Sale as SaleModel) || mongoose.model<ISale>("Sale", saleSchema);
 
 export default Sale;

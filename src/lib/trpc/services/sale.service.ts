@@ -70,6 +70,7 @@ export interface SaleDTO {
   discount: number;
   tax: number;
   totalAmount: number;
+  deposit: number;
   paymentMethod?: string;
   paymentStatus: "pending" | "paid" | "partial";
   paidAmount: number;
@@ -282,6 +283,7 @@ export async function createSale(userId: string, input: CreateSaleInput): Promis
   const sale = await Sale.create({
     ...input,
     paymentStatus: effectivePaymentStatus,
+    deposit: input.deposit ?? 0,
     billNumber,
     items: input.items.map((item) => ({
       ...item,
@@ -328,6 +330,7 @@ export async function createSale(userId: string, input: CreateSaleInput): Promis
     discount: populatedSale.discount,
     tax: populatedSale.tax,
     totalAmount: populatedSale.totalAmount,
+    deposit: populatedSale.deposit ?? 0,
     paymentMethod: populatedSale.paymentMethod,
     paymentStatus: populatedSale.paymentStatus,
     paidAmount: populatedSale.paidAmount,
@@ -438,6 +441,7 @@ export async function updateSale(userId: string, input: UpdateSaleInput): Promis
     discount: sale.discount,
     tax: sale.tax,
     totalAmount: sale.totalAmount,
+    deposit: sale.deposit ?? 0,
     paymentMethod: sale.paymentMethod,
     paymentStatus: sale.paymentStatus,
     paidAmount: sale.paidAmount,
@@ -546,6 +550,7 @@ export async function updateSaleStatus(
     paymentMethod: updatedSale.paymentMethod,
     paymentStatus: updatedSale.paymentStatus,
     paidAmount: updatedSale.paidAmount,
+    deposit: updatedSale.deposit ?? 0,
     status: updatedSale.status,
     notes: updatedSale.notes,
     createdBy: updatedSale.createdBy.toString(),
@@ -592,6 +597,7 @@ export async function getSaleById(input: GetSaleByIdInput): Promise<SaleDTO> {
     discount: sale.discount,
     tax: sale.tax,
     totalAmount: sale.totalAmount,
+    deposit: sale.deposit ?? 0,
     paymentMethod: sale.paymentMethod,
     paymentStatus: sale.paymentStatus,
     paidAmount: sale.paidAmount,
@@ -689,6 +695,7 @@ export async function listSales(
       paymentMethod: sale.paymentMethod,
       paymentStatus: sale.paymentStatus,
       paidAmount: sale.paidAmount,
+      deposit: sale.deposit ?? 0,
       status: sale.status,
       notes: sale.notes,
       createdBy: sale.createdBy.toString(),

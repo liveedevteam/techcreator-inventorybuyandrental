@@ -22,13 +22,12 @@ export const createSaleSchema = z
     customerPhone: z.string().max(20, "เบอร์โทรศัพท์ไม่เกิน 20 ตัวอักษร").optional(),
     customerEmail: z.string().email("อีเมลไม่ถูกต้อง").optional(),
     customerAddress: z.string().max(500, "ที่อยู่ไม่เกิน 500 ตัวอักษร").optional(),
-    items: z
-      .array(saleItemSchema)
-      .min(1, "ต้องเลือกสินค้าอย่างน้อย 1 รายการ"),
+    items: z.array(saleItemSchema).min(1, "ต้องเลือกสินค้าอย่างน้อย 1 รายการ"),
     subtotal: z.number().min(0, "ยอดรวมต้องไม่เป็นค่าลบ"),
     discount: z.number().min(0, "ส่วนลดต้องไม่เป็นค่าลบ").default(0),
     tax: z.number().min(0, "ภาษีต้องไม่เป็นค่าลบ").default(0),
     totalAmount: z.number().min(0, "ยอดรวมทั้งสิ้นต้องไม่เป็นค่าลบ"),
+    deposit: z.number().min(0, "เงินมัดจำต้องไม่เป็นค่าลบ").default(0),
     paymentMethod: z.enum(["cash", "card", "transfer", "other"]).optional(),
     paymentStatus: z.enum(["pending", "paid", "partial"]).default("pending"),
     paidAmount: z.number().min(0, "จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ").default(0),
@@ -37,10 +36,7 @@ export const createSaleSchema = z
   .refine(
     (data) => {
       // Validate that items total matches subtotal
-      const itemsTotal = data.items.reduce(
-        (sum, item) => sum + item.totalPrice,
-        0
-      );
+      const itemsTotal = data.items.reduce((sum, item) => sum + item.totalPrice, 0);
       return Math.abs(itemsTotal - data.subtotal) < 0.01; // Allow small floating point differences
     },
     {
@@ -75,6 +71,7 @@ export const updateSaleSchema = z.object({
   discount: z.number().min(0, "ส่วนลดต้องไม่เป็นค่าลบ").optional(),
   tax: z.number().min(0, "ภาษีต้องไม่เป็นค่าลบ").optional(),
   totalAmount: z.number().min(0, "ยอดรวมทั้งสิ้นต้องไม่เป็นค่าลบ").optional(),
+  deposit: z.number().min(0, "เงินมัดจำต้องไม่เป็นค่าลบ").optional(),
   paymentMethod: z.enum(["cash", "card", "transfer", "other"]).optional(),
   paymentStatus: z.enum(["pending", "paid", "partial"]).optional(),
   paidAmount: z.number().min(0, "จำนวนเงินที่จ่ายต้องไม่เป็นค่าลบ").optional(),

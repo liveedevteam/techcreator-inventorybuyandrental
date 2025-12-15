@@ -52,6 +52,7 @@ export default function SalesPage() {
     id: string;
     totalAmount: number;
     paidAmount: number;
+    deposit: number;
     paymentStatus: "pending" | "paid" | "partial";
   } | null>(null);
   const billRef = useRef<HTMLDivElement>(null);
@@ -208,6 +209,7 @@ export default function SalesPage() {
       discount: 0,
       tax: 0,
       totalAmount: 0,
+      deposit: 0,
       paymentMethod: "cash",
       paymentStatus: "pending",
       paidAmount: 0,
@@ -260,6 +262,7 @@ export default function SalesPage() {
       discount: 0,
       tax: 0,
       totalAmount: 0,
+      deposit: 0,
       paymentMethod: "cash",
       paymentStatus: "pending",
       paidAmount: 0,
@@ -286,6 +289,7 @@ export default function SalesPage() {
     discount: number;
     tax: number;
     totalAmount: number;
+    deposit: number;
     paymentMethod?: "cash" | "card" | "transfer" | "other";
     paymentStatus: "pending" | "paid" | "partial";
     paidAmount: number;
@@ -302,6 +306,7 @@ export default function SalesPage() {
       discount: sale.discount,
       tax: sale.tax,
       totalAmount: sale.totalAmount,
+      deposit: sale.deposit ?? 0,
       paymentMethod: sale.paymentMethod || "cash",
       paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial",
       paidAmount: sale.paidAmount,
@@ -340,12 +345,14 @@ export default function SalesPage() {
     id: string;
     totalAmount: number;
     paidAmount: number;
+    deposit: number;
     paymentStatus: "pending" | "paid" | "partial";
   }) => {
     setPaymentEditSale({
       id: sale.id,
       totalAmount: sale.totalAmount,
       paidAmount: sale.paidAmount ?? 0,
+      deposit: sale.deposit ?? 0,
       paymentStatus: sale.paymentStatus,
     });
   };
@@ -363,6 +370,7 @@ export default function SalesPage() {
         id: paymentEditSale.id,
         paymentStatus: paymentEditSale.paymentStatus,
         paidAmount,
+        deposit: paymentEditSale.deposit ?? 0,
       },
       {
         onSuccess: () => {
@@ -611,6 +619,7 @@ export default function SalesPage() {
                                 id: sale.id,
                                 totalAmount: sale.totalAmount,
                                 paidAmount: sale.paidAmount,
+                                deposit: sale.deposit ?? 0,
                                 paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial",
                               })
                             }
@@ -801,6 +810,19 @@ export default function SalesPage() {
                             <option value="paid">ชำระแล้ว</option>
                             <option value="partial">ชำระบางส่วน</option>
                           </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="deposit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>เงินมัดจำ</FormLabel>
+                        <FormControl>
+                          <Input type="number" min="0" step="0.01" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
