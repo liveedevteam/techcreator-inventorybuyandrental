@@ -36,11 +36,24 @@ import { useTranslation } from "@/lib/hooks/useTranslation";
 
 export default function SalesPage() {
   const t = useTranslation();
+  const notify = (title: string, description?: string) => {
+    if (typeof window !== "undefined") {
+      window.alert(description ? `${title}\n${description}` : title);
+    } else {
+      console.log(title, description);
+    }
+  };
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBillPreviewOpen, setIsBillPreviewOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<{ id: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [previewSaleId, setPreviewSaleId] = useState<string | null>(null);
+  const [paymentEditSale, setPaymentEditSale] = useState<{
+    id: string;
+    totalAmount: number;
+    paidAmount: number;
+    paymentStatus: "pending" | "paid" | "partial";
+  } | null>(null);
   const billRef = useRef<HTMLDivElement>(null);
   const [statusFilter, setStatusFilter] = useState<"pending" | "completed" | "cancelled" | "all">(
     "all"
@@ -93,6 +106,10 @@ export default function SalesPage() {
     onSuccess: () => {
       utils.sale.list.invalidate();
       closeModal();
+      notify("สร้างการขายสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถสร้างการขายได้", err.message);
     },
   });
 
@@ -100,13 +117,41 @@ export default function SalesPage() {
     onSuccess: () => {
       utils.sale.list.invalidate();
       closeModal();
+      notify("อัปเดตการขายสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถอัปเดตการขายได้", err.message);
     },
   });
 
   const updateStatusMutation = trpc.sale.updateStatus.useMutation({
-    onSuccess: () => {
+    onSuccess: (updatedSale) => {
+      // Optimistically update the visible list so status flips to "เสร็จสิ้น" immediately
+      utils.sale.list.setData(
+        {
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          paymentStatus: paymentStatusFilter !== "all" ? paymentStatusFilter : undefined,
+          page: 1,
+          limit: 50,
+        },
+        (old) =>
+          old
+            ? {
+                ...old,
+                sales: old.sales.map((sale) =>
+                  sale.id === updatedSale.id ? { ...sale, status: updatedSale.status } : sale
+                ),
+              }
+            : old
+      );
+
+      utils.sale.getById.setData({ id: updatedSale.id }, updatedSale);
       utils.sale.list.invalidate();
       utils.buyStock.list.invalidate();
+      notify("อัปเดตสถานะสำเร็จ");
+    },
+    onError: (err) => {
+      notify("อัปเดตสถานะไม่สำเร็จ", err.message);
     },
   });
 
@@ -114,8 +159,18 @@ export default function SalesPage() {
     onSuccess: () => {
       utils.sale.list.invalidate();
       setDeleteConfirmId(null);
+      notify("ลบการขายสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถลบการขายได้", err.message);
     },
   });
+
+  const paymentStatusOptions: Array<{ value: "pending" | "paid" | "partial"; label: string }> = [
+    { value: "pending", label: "รอชำระ" },
+    { value: "paid", label: "ชำระแล้ว" },
+    { value: "partial", label: "ชำระบางส่วน" },
+  ];
 
   // Debug logging for product-buyStock relationship
   useEffect(() => {
@@ -163,16 +218,35 @@ export default function SalesPage() {
   const items = form.watch("items") || [];
   const discount = form.watch("discount") || 0;
   const tax = form.watch("tax") || 0;
+  const paymentStatus = form.watch("paymentStatus");
+  const totalAmountValue = form.watch("totalAmount") || 0;
 
-  // Calculate totals when items change
+  const formatCurrency = (value: number | undefined) =>
+    (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Calculate totals using the latest form values (avoids stale closures)
   const calculateTotals = () => {
-    const itemsTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+    const currentItems = form.getValues("items") || [];
+    const currentDiscount = form.getValues("discount") ?? 0;
+    const currentTax = form.getValues("tax") ?? 0;
+
+    const itemsTotal = currentItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const calculatedSubtotal = itemsTotal;
-    const calculatedTotal = calculatedSubtotal - discount + tax;
+    const calculatedTotal = calculatedSubtotal - currentDiscount + currentTax;
 
     form.setValue("subtotal", calculatedSubtotal);
     form.setValue("totalAmount", calculatedTotal);
   };
+
+  // Keep paidAmount aligned with paymentStatus selection
+  useEffect(() => {
+    if (!paymentStatus) return;
+    if (paymentStatus === "pending") {
+      form.setValue("paidAmount", 0);
+    } else if (paymentStatus === "paid") {
+      form.setValue("paidAmount", totalAmountValue);
+    }
+  }, [paymentStatus, totalAmountValue, form]);
 
   const openCreateModal = () => {
     setEditingSale(null);
@@ -262,6 +336,42 @@ export default function SalesPage() {
     updateStatusMutation.mutate({ id, status: "cancelled" });
   };
 
+  const openPaymentEdit = (sale: {
+    id: string;
+    totalAmount: number;
+    paidAmount: number;
+    paymentStatus: "pending" | "paid" | "partial";
+  }) => {
+    setPaymentEditSale({
+      id: sale.id,
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount ?? 0,
+      paymentStatus: sale.paymentStatus,
+    });
+  };
+
+  const closePaymentEdit = () => setPaymentEditSale(null);
+
+  const savePaymentEdit = () => {
+    if (!paymentEditSale) return;
+    const paidAmount =
+      paymentEditSale.paymentStatus === "paid"
+        ? paymentEditSale.totalAmount
+        : paymentEditSale.paidAmount;
+    updateMutation.mutate(
+      {
+        id: paymentEditSale.id,
+        paymentStatus: paymentEditSale.paymentStatus,
+        paidAmount,
+      },
+      {
+        onSuccess: () => {
+          closePaymentEdit();
+        },
+      }
+    );
+  };
+
   const openBillPreview = (saleId: string) => {
     setPreviewSaleId(saleId);
     setIsBillPreviewOpen(true);
@@ -345,10 +455,16 @@ export default function SalesPage() {
         };
       }
     } else if (field === "quantity" || field === "unitPrice") {
+      // Ensure numeric arithmetic uses the incoming value, not stale state
+      const currentItem = updatedItems[index];
+      const newQuantity = field === "quantity" ? Number(value) || 0 : currentItem.quantity;
+      const newUnitPrice = field === "unitPrice" ? Number(value) || 0 : currentItem.unitPrice;
+
       updatedItems[index] = {
-        ...updatedItems[index],
-        [field]: value,
-        totalPrice: updatedItems[index].quantity * updatedItems[index].unitPrice,
+        ...currentItem,
+        quantity: newQuantity,
+        unitPrice: newUnitPrice,
+        totalPrice: newQuantity * newUnitPrice,
       };
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
@@ -453,6 +569,9 @@ export default function SalesPage() {
                       {t.sale.totalAmount}
                     </th>
                     <th className="text-left p-3 text-sm font-semibold text-foreground">
+                      ชำระแล้ว
+                    </th>
+                    <th className="text-left p-3 text-sm font-semibold text-foreground">
                       {t.sale.paymentStatus}
                     </th>
                     <th className="text-left p-3 text-sm font-semibold text-foreground">
@@ -477,7 +596,31 @@ export default function SalesPage() {
                       <td className="p-3 text-sm text-foreground">
                         {sale.totalAmount.toLocaleString()} ฿
                       </td>
-                      <td className="p-3">{getPaymentStatusBadge(sale.paymentStatus)}</td>
+                      <td className="p-3 text-sm text-foreground">
+                        {`${formatCurrency(sale.paidAmount)} ฿`}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          {getPaymentStatusBadge(sale.paymentStatus)}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="px-2"
+                            onClick={() =>
+                              openPaymentEdit({
+                                id: sale.id,
+                                totalAmount: sale.totalAmount,
+                                paidAmount: sale.paidAmount,
+                                paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial",
+                              })
+                            }
+                            title="แก้ไขการชำระเงิน"
+                            aria-label="แก้ไขการชำระเงิน"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                       <td className="p-3">{getStatusBadge(sale.status)}</td>
                       <td className="p-3 text-sm text-muted-foreground">
                         {new Date(sale.createdAt).toLocaleDateString("th-TH")}
@@ -527,7 +670,8 @@ export default function SalesPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleComplete(sale.id)}
-                                title={t.sale.complete}
+                                title="เสร็จสิ้น"
+                                aria-label="เสร็จสิ้น"
                               >
                                 <Check className="h-4 w-4 text-success" />
                               </Button>
@@ -607,7 +751,7 @@ export default function SalesPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="customerEmail"
@@ -636,6 +780,26 @@ export default function SalesPage() {
                             <option value="card">{t.sale.paymentMethodCard}</option>
                             <option value="transfer">{t.sale.paymentMethodTransfer}</option>
                             <option value="other">{t.sale.paymentMethodOther}</option>
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="paymentStatus"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>สถานะการชำระเงิน</FormLabel>
+                        <FormControl>
+                          <select
+                            {...field}
+                            className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground font-semibold"
+                          >
+                            <option value="pending">รอชำระ</option>
+                            <option value="paid">ชำระแล้ว</option>
+                            <option value="partial">ชำระบางส่วน</option>
                           </select>
                         </FormControl>
                         <FormMessage />
@@ -867,7 +1031,13 @@ export default function SalesPage() {
                       <FormItem>
                         <FormLabel>{t.sale.paidAmount}</FormLabel>
                         <FormControl>
-                          <Input type="number" min="0" step="0.01" {...field} />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            {...field}
+                            disabled={paymentStatus === "pending"}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1054,6 +1224,83 @@ export default function SalesPage() {
               >
                 {t.common.delete}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Status Modal */}
+      {paymentEditSale && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-5 w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-foreground">อัปเดตการชำระเงิน</h3>
+              <Button variant="ghost" size="sm" onClick={closePaymentEdit}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">ยอดรวม</p>
+                  <p className="font-semibold">
+                    {paymentEditSale.totalAmount.toLocaleString("th-TH", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">ชำระแล้ว</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={paymentEditSale.paidAmount}
+                    onChange={(e) =>
+                      setPaymentEditSale((prev) =>
+                        prev ? { ...prev, paidAmount: Number(e.target.value) || 0 } : prev
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">สถานะการชำระเงิน</p>
+                <div className="flex gap-2">
+                  {paymentStatusOptions.map((opt) => (
+                    <Button
+                      key={opt.value}
+                      type="button"
+                      variant={paymentEditSale.paymentStatus === opt.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() =>
+                        setPaymentEditSale((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                paymentStatus: opt.value,
+                                paidAmount:
+                                  opt.value === "paid" ? prev.totalAmount : prev.paidAmount,
+                              }
+                            : prev
+                        )
+                      }
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="outline" onClick={closePaymentEdit}>
+                ยกเลิก
+              </Button>
+              <Button onClick={savePaymentEdit}>บันทึก</Button>
             </div>
           </div>
         </div>
