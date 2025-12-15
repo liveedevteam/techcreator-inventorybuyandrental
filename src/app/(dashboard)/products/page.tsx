@@ -70,6 +70,10 @@ export default function ProductsPage() {
       unit: "",
       images: [],
       stockType: "buy",
+      dailyRentalRate: undefined,
+      monthlyRentalRate: undefined,
+      insuranceFee: undefined,
+      replacementPrice: undefined,
     },
   });
 
@@ -84,11 +88,29 @@ export default function ProductsPage() {
       unit: "",
       images: [],
       stockType: "buy",
+      dailyRentalRate: undefined,
+      monthlyRentalRate: undefined,
+      insuranceFee: undefined,
+      replacementPrice: undefined,
     });
     setIsModalOpen(true);
   };
 
-  const openEditModal = (product: { id: string; name: string; description?: string; sku: string; category?: string; price?: number; unit?: string; images?: string[]; stockType: "buy" | "rental" }) => {
+  const openEditModal = (product: {
+    id: string;
+    name: string;
+    description?: string;
+    sku: string;
+    category?: string;
+    price?: number;
+    unit?: string;
+    images?: string[];
+    stockType: "buy" | "rental";
+    dailyRentalRate?: number;
+    monthlyRentalRate?: number;
+    insuranceFee?: number;
+    replacementPrice?: number;
+  }) => {
     setEditingProduct({ id: product.id });
     form.reset({
       name: product.name,
@@ -99,6 +121,10 @@ export default function ProductsPage() {
       unit: product.unit || "",
       images: product.images || [],
       stockType: product.stockType,
+      dailyRentalRate: product.dailyRentalRate,
+      monthlyRentalRate: product.monthlyRentalRate,
+      insuranceFee: product.insuranceFee,
+      replacementPrice: product.replacementPrice,
     });
     setIsModalOpen(true);
   };
@@ -182,7 +208,10 @@ export default function ProductsPage() {
                 </thead>
                 <tbody>
                   {data?.products.map((product) => (
-                    <tr key={product.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                    <tr
+                      key={product.id}
+                      className="border-b border-border hover:bg-muted/30 transition-colors"
+                    >
                       <td className="p-3 text-sm font-medium text-foreground">{product.sku}</td>
                       <td className="p-3 text-sm text-foreground">{product.name}</td>
                       <td className="p-3 text-sm text-muted-foreground">
@@ -203,11 +232,7 @@ export default function ProductsPage() {
                       </td>
                       <td className="p-3">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(product)}
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => openEditModal(product)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
@@ -290,6 +315,99 @@ export default function ProductsPage() {
                     </FormItem>
                   )}
                 />
+
+                {form.watch("stockType") === "rental" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="dailyRentalRate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t.product.dailyRentalRate}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              {...field}
+                              value={field.value ?? ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value ? parseFloat(e.target.value) : undefined
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="monthlyRentalRate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t.product.monthlyRentalRate}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              {...field}
+                              value={field.value ?? ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value ? parseFloat(e.target.value) : undefined
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="insuranceFee"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t.product.insuranceFee}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              {...field}
+                              value={field.value ?? ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value ? parseFloat(e.target.value) : undefined
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="replacementPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t.product.replacementPrice}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              {...field}
+                              value={field.value ?? ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value ? parseFloat(e.target.value) : undefined
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}

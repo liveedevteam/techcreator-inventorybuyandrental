@@ -19,6 +19,7 @@ export const createRentalAssetSchema = z.object({
     .min(1, "รหัสทรัพย์สินจำเป็นต้องระบุ")
     .regex(/^[A-Z0-9-_]+$/, "รหัสทรัพย์สินต้องเป็นตัวพิมพ์ใหญ่ ตัวเลข ขีดกลาง และขีดล่างเท่านั้น")
     .transform((val) => val.toUpperCase()),
+  quantity: z.number().int().min(1, "จำนวนต้องไม่น้อยกว่า 1").default(1),
   status: rentalAssetStatusSchema.default("available"),
   notes: z.string().max(1000, "หมายเหตุไม่เกิน 1000 ตัวอักษร").optional(),
 });

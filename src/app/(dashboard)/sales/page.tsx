@@ -42,7 +42,9 @@ export default function SalesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [previewSaleId, setPreviewSaleId] = useState<string | null>(null);
   const billRef = useRef<HTMLDivElement>(null);
-  const [statusFilter, setStatusFilter] = useState<"pending" | "completed" | "cancelled" | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"pending" | "completed" | "cancelled" | "all">(
+    "all"
+  );
   const [paymentStatusFilter] = useState<"pending" | "paid" | "partial" | "all">("all");
 
   const utils = trpc.useUtils();
@@ -63,16 +65,16 @@ export default function SalesPage() {
   // Data Sources for Product Dropdown
   // ============================================================================
   // 1. Products: Fetches all buy-type products (limit 100 max)
-  // 2. BuyStock: Fetches all stock entries (limit 100 max) 
+  // 2. BuyStock: Fetches all stock entries (limit 100 max)
   // 3. Matching: Products are matched with stock by productId
   //    - If no stock entry exists for a product, quantity shows as 0
   //    - Stock entries must be created manually via the Buy Stock page
   // ============================================================================
-  
-  const { 
-    data: products, 
-    isLoading: productsLoading, 
-    error: productsError 
+
+  const {
+    data: products,
+    isLoading: productsLoading,
+    error: productsError,
   } = trpc.product.list.useQuery({
     stockType: "buy",
     page: 1,
@@ -81,10 +83,7 @@ export default function SalesPage() {
 
   // Fetch all buy stock items (no filters) to match with products
   // This ensures we have complete stock data for the product dropdown
-  const { 
-    data: buyStockList, 
-    error: stocksError 
-  } = trpc.buyStock.list.useQuery({
+  const { data: buyStockList, error: stocksError } = trpc.buyStock.list.useQuery({
     page: 1,
     limit: 100, // Maximum allowed - fetch all stock items
     // No search or lowStockOnly filters - we need all stock for matching
@@ -121,21 +120,29 @@ export default function SalesPage() {
   // Debug logging for product-buyStock relationship
   useEffect(() => {
     if (products?.products && buyStockList?.stocks) {
-      console.log('Products:', products.products);
-      console.log('BuyStock:', buyStockList.stocks);
-      console.log('Product IDs:', products.products.map(p => p.id));
-      console.log('Stock Product IDs:', buyStockList.stocks.map(s => s.productId));
+      console.log("Products:", products.products);
+      console.log("BuyStock:", buyStockList.stocks);
+      console.log(
+        "Product IDs:",
+        products.products.map((p) => p.id)
+      );
+      console.log(
+        "Stock Product IDs:",
+        buyStockList.stocks.map((s) => s.productId)
+      );
     }
     if (productsError) {
-      console.error('Products query error:', productsError);
+      console.error("Products query error:", productsError);
     }
     if (stocksError) {
-      console.error('BuyStock query error:', stocksError);
+      console.error("BuyStock query error:", stocksError);
     }
   }, [products, buyStockList, productsError, stocksError]);
 
   const form = useForm<CreateSaleInput | UpdateSaleInput>({
-    resolver: zodResolver(editingSale ? updateSaleSchema : createSaleSchema) as unknown as Resolver<CreateSaleInput | UpdateSaleInput>,
+    resolver: zodResolver(editingSale ? updateSaleSchema : createSaleSchema) as unknown as Resolver<
+      CreateSaleInput | UpdateSaleInput
+    >,
     defaultValues: {
       customerName: "",
       customerPhone: "",
@@ -162,7 +169,7 @@ export default function SalesPage() {
     const itemsTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
     const calculatedSubtotal = itemsTotal;
     const calculatedTotal = calculatedSubtotal - discount + tax;
-    
+
     form.setValue("subtotal", calculatedSubtotal);
     form.setValue("totalAmount", calculatedTotal);
   };
@@ -187,7 +194,29 @@ export default function SalesPage() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (sale: { id: string; customerName: string; customerPhone?: string; customerEmail?: string; customerAddress?: string; items: Array<{ productId: string; productName: string; sku: string; quantity: number; unitPrice: number; totalPrice: number }>; subtotal: number; discount: number; tax: number; totalAmount: number; paymentMethod?: "cash" | "card" | "transfer" | "other"; paymentStatus: "pending" | "paid" | "partial"; paidAmount: number; notes?: string }) => {
+  const openEditModal = (sale: {
+    id: string;
+    customerName: string;
+    customerPhone?: string;
+    customerEmail?: string;
+    customerAddress?: string;
+    items: Array<{
+      productId: string;
+      productName: string;
+      sku: string;
+      quantity: number;
+      unitPrice: number;
+      totalPrice: number;
+    }>;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    totalAmount: number;
+    paymentMethod?: "cash" | "card" | "transfer" | "other";
+    paymentStatus: "pending" | "paid" | "partial";
+    paidAmount: number;
+    notes?: string;
+  }) => {
     setEditingSale({ id: sale.id });
     form.reset({
       customerName: sale.customerName,
@@ -291,14 +320,17 @@ export default function SalesPage() {
 
   const removeItem = (index: number) => {
     const currentItems = form.getValues("items") || [];
-    form.setValue("items", currentItems.filter((_, i) => i !== index));
+    form.setValue(
+      "items",
+      currentItems.filter((_, i) => i !== index)
+    );
     calculateTotals();
   };
 
   const updateItem = (index: number, field: keyof SaleItem, value: string | number) => {
     const currentItems = form.getValues("items") || [];
     const updatedItems = [...currentItems];
-    
+
     if (field === "productId" && typeof value === "string") {
       const product = products?.products.find((p) => p.id === value);
       if (product) {
@@ -321,29 +353,43 @@ export default function SalesPage() {
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
     }
-    
+
     form.setValue("items", updatedItems);
     calculateTotals();
   };
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: "blue" | "success" | "error" | "warning" }> = {
+    const statusMap: Record<
+      string,
+      { label: string; color: "blue" | "success" | "error" | "warning" }
+    > = {
       pending: { label: t.sale.statusPending, color: "warning" },
       completed: { label: t.sale.statusCompleted, color: "success" },
       cancelled: { label: t.sale.statusCancelled, color: "error" },
     };
     const statusInfo = statusMap[status] || { label: status, color: "blue" };
-    return <Badge variant="status" color={statusInfo.color}>{statusInfo.label}</Badge>;
+    return (
+      <Badge variant="status" color={statusInfo.color}>
+        {statusInfo.label}
+      </Badge>
+    );
   };
 
   const getPaymentStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: "blue" | "success" | "error" | "warning" }> = {
+    const statusMap: Record<
+      string,
+      { label: string; color: "blue" | "success" | "error" | "warning" }
+    > = {
       pending: { label: t.sale.paymentStatusPending, color: "warning" },
       paid: { label: t.sale.paymentStatusPaid, color: "success" },
       partial: { label: t.sale.paymentStatusPartial, color: "blue" },
     };
     const statusInfo = statusMap[status] || { label: status, color: "blue" };
-    return <Badge variant="status" color={statusInfo.color}>{statusInfo.label}</Badge>;
+    return (
+      <Badge variant="status" color={statusInfo.color}>
+        {statusInfo.label}
+      </Badge>
+    );
   };
 
   return (
@@ -426,9 +472,7 @@ export default function SalesPage() {
                       key={sale.id}
                       className="border-b border-border hover:bg-muted/30 transition-colors"
                     >
-                      <td className="p-3 text-sm font-medium text-foreground">
-                        {sale.billNumber}
-                      </td>
+                      <td className="p-3 text-sm font-medium text-foreground">{sale.billNumber}</td>
                       <td className="p-3 text-sm text-foreground">{sale.customerName}</td>
                       <td className="p-3 text-sm text-foreground">
                         {sale.totalAmount.toLocaleString()} ฿
@@ -443,6 +487,14 @@ export default function SalesPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => window.open(`/sales/${sale.id}/bill`, "_blank")}
+                            title="พิมพ์บิล"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => openBillPreview(sale.id)}
                           >
                             <Eye className="h-4 w-4" />
@@ -452,11 +504,22 @@ export default function SalesPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => openEditModal({ 
-                                  ...sale, 
-                                  paymentMethod: (sale.paymentMethod as "cash" | "card" | "transfer" | "other" | undefined) || "cash",
-                                  paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial"
-                                })}
+                                onClick={() =>
+                                  openEditModal({
+                                    ...sale,
+                                    paymentMethod:
+                                      (sale.paymentMethod as
+                                        | "cash"
+                                        | "card"
+                                        | "transfer"
+                                        | "other"
+                                        | undefined) || "cash",
+                                    paymentStatus: sale.paymentStatus as
+                                      | "pending"
+                                      | "paid"
+                                      | "partial",
+                                  })
+                                }
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -605,7 +668,10 @@ export default function SalesPage() {
                   </div>
                   <div className="space-y-2">
                     {items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border border-border rounded">
+                      <div
+                        key={index}
+                        className="grid grid-cols-12 gap-2 items-end p-3 border border-border rounded"
+                      >
                         <div className="col-span-4">
                           <label className="text-sm text-muted-foreground mb-1 block">
                             {t.sale.selectProduct}
@@ -620,28 +686,30 @@ export default function SalesPage() {
                             {productsLoading ? (
                               <option disabled>กำลังโหลดสินค้า...</option>
                             ) : productsError ? (
-                              <option disabled>เกิดข้อผิดพลาด: {productsError.message || "ไม่สามารถโหลดสินค้าได้"}</option>
+                              <option disabled>
+                                เกิดข้อผิดพลาด: {productsError.message || "ไม่สามารถโหลดสินค้าได้"}
+                              </option>
                             ) : products?.products?.length === 0 ? (
                               <option disabled>ไม่พบสินค้าประเภทซื้อ</option>
                             ) : (
-                              products?.products
-                                ?.map((product) => {
-                                  const stock = buyStockList?.stocks?.find(
-                                    (s) => s.productId === product.id
-                                  );
-                                  const stockQuantity = stock?.quantity ?? 0;
-                                  const isOutOfStock = stockQuantity === 0;
-                                  return (
-                                    <option 
-                                      key={product.id} 
-                                      value={product.id}
-                                      disabled={isOutOfStock}
-                                    >
-                                      {product.name} ({product.sku}) - สต็อก: {stockQuantity} {product.unit || ""}
-                                      {isOutOfStock ? " [หมด]" : ""}
-                                    </option>
-                                  );
-                                })
+                              products?.products?.map((product) => {
+                                const stock = buyStockList?.stocks?.find(
+                                  (s) => s.productId === product.id
+                                );
+                                const stockQuantity = stock?.quantity ?? 0;
+                                const isOutOfStock = stockQuantity === 0;
+                                return (
+                                  <option
+                                    key={product.id}
+                                    value={product.id}
+                                    disabled={isOutOfStock}
+                                  >
+                                    {product.name} ({product.sku}) - สต็อก: {stockQuantity}{" "}
+                                    {product.unit || ""}
+                                    {isOutOfStock ? " [หมด]" : ""}
+                                  </option>
+                                );
+                              })
                             )}
                           </select>
                         </div>

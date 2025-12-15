@@ -31,6 +31,7 @@ export const th = {
     name: "ชื่อ",
     description: "คำอธิบาย",
     notes: "หมายเหตุ",
+    quantity: "จำนวน",
   },
 
   // Navigation
@@ -60,6 +61,10 @@ export const th = {
     stockType: "ประเภทสต็อก",
     stockTypeBuy: "ซื้อ",
     stockTypeRental: "เช่า",
+    dailyRentalRate: "ค่าเช่า/วัน",
+    monthlyRentalRate: "ค่าเช่า/เดือน",
+    insuranceFee: "ค่าประกันสินค้า",
+    replacementPrice: "ราคากรณีสูญหาย",
     createdBy: "สร้างโดย",
     createdAt: "สร้างเมื่อ",
     updatedAt: "อัปเดตเมื่อ",
@@ -95,6 +100,11 @@ export const th = {
     statusReserved: "จอง",
     statusDamaged: "เสียหาย",
     currentRental: "การเช่าปัจจุบัน",
+    dailyRate: "ค่าเช่า/วัน",
+    monthlyRate: "ค่าเช่า/เดือน",
+    insuranceFee: "ค่าประกันสินค้า",
+    replacementPrice: "ราคากรณีสูญหาย",
+    remaining: "คงเหลือ",
     deleteConfirm: "คุณแน่ใจหรือไม่ที่จะลบทรัพย์สินนี้?",
   },
 

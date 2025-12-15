@@ -1,6 +1,6 @@
 /**
  * Product Model
- * 
+ *
  * Mongoose model for products in the system.
  * Supports both buy and rental stock types.
  */
@@ -31,6 +31,10 @@ export interface IProduct {
   unit?: string;
   images?: string[];
   stockType: StockType;
+  dailyRentalRate?: number;
+  monthlyRentalRate?: number;
+  insuranceFee?: number;
+  replacementPrice?: number;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -44,7 +48,7 @@ type ProductModel = Model<IProduct>;
 
 /**
  * Product schema with validation rules
- * 
+ *
  * Fields:
  * - name: Product name (required, 1-200 chars)
  * - description: Product description (optional, max 2000 chars)
@@ -61,7 +65,7 @@ const productSchema = new Schema<IProduct>(
     // ========================================================================
     // Product Information
     // ========================================================================
-    
+
     name: {
       type: String,
       required: [true, "Product name is required"],
@@ -80,7 +84,10 @@ const productSchema = new Schema<IProduct>(
       unique: true,
       trim: true,
       uppercase: true,
-      match: [/^[A-Z0-9-_]+$/, "SKU can only contain uppercase letters, numbers, hyphens, and underscores"],
+      match: [
+        /^[A-Z0-9-_]+$/,
+        "SKU can only contain uppercase letters, numbers, hyphens, and underscores",
+      ],
     },
     category: {
       type: String,
@@ -104,7 +111,7 @@ const productSchema = new Schema<IProduct>(
     // ========================================================================
     // Stock Management
     // ========================================================================
-    
+
     stockType: {
       type: String,
       enum: ["buy", "rental"],
@@ -112,9 +119,30 @@ const productSchema = new Schema<IProduct>(
     },
 
     // ========================================================================
+    // Rental Rates (only for rental stock type)
+    // ========================================================================
+
+    dailyRentalRate: {
+      type: Number,
+      min: [0, "Daily rental rate cannot be negative"],
+    },
+    monthlyRentalRate: {
+      type: Number,
+      min: [0, "Monthly rental rate cannot be negative"],
+    },
+    insuranceFee: {
+      type: Number,
+      min: [0, "Insurance fee cannot be negative"],
+    },
+    replacementPrice: {
+      type: Number,
+      min: [0, "Replacement price cannot be negative"],
+    },
+
+    // ========================================================================
     // Audit Fields
     // ========================================================================
-    
+
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -128,7 +156,6 @@ const productSchema = new Schema<IProduct>(
 
 // Prevent model recompilation during hot reload
 const Product =
-  (mongoose.models.Product as ProductModel) ||
-  mongoose.model<IProduct>("Product", productSchema);
+  (mongoose.models.Product as ProductModel) || mongoose.model<IProduct>("Product", productSchema);
 
 export default Product;

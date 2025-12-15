@@ -1,6 +1,6 @@
 /**
  * Product Service
- * 
+ *
  * Handles all product-related business logic including:
  * - Product CRUD operations
  * - SKU validation and uniqueness
@@ -25,7 +25,7 @@ import * as activityLogService from "./activity-log.service";
 
 /**
  * Product Data Transfer Object
- * 
+ *
  * Represents a product with all its details.
  */
 export interface ProductDTO {
@@ -38,6 +38,10 @@ export interface ProductDTO {
   unit?: string;
   images?: string[];
   stockType: "buy" | "rental";
+  dailyRentalRate?: number;
+  monthlyRentalRate?: number;
+  insuranceFee?: number;
+  replacementPrice?: number;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -49,10 +53,10 @@ export interface ProductDTO {
 
 /**
  * Create a new product
- * 
+ *
  * Validates SKU uniqueness before creating product.
  * Automatically logs the creation activity.
- * 
+ *
  * @param userId - ID of user creating the product
  * @param input - Product creation data
  * @returns Created product DTO
@@ -97,6 +101,10 @@ export async function createProduct(
     unit: product.unit,
     images: product.images,
     stockType: product.stockType,
+    dailyRentalRate: product.dailyRentalRate,
+    monthlyRentalRate: product.monthlyRentalRate,
+    insuranceFee: product.insuranceFee,
+    replacementPrice: product.replacementPrice,
     createdBy: product.createdBy.toString(),
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -105,10 +113,10 @@ export async function createProduct(
 
 /**
  * Update an existing product
- * 
+ *
  * Validates SKU uniqueness if SKU is being updated.
  * Tracks changes for activity logging.
- * 
+ *
  * @param userId - ID of user updating the product
  * @param input - Product update data
  * @returns Updated product DTO
@@ -180,6 +188,10 @@ export async function updateProduct(
     unit: product.unit,
     images: product.images,
     stockType: product.stockType,
+    dailyRentalRate: product.dailyRentalRate,
+    monthlyRentalRate: product.monthlyRentalRate,
+    insuranceFee: product.insuranceFee,
+    replacementPrice: product.replacementPrice,
     createdBy: product.createdBy.toString(),
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -188,7 +200,7 @@ export async function updateProduct(
 
 /**
  * Get a single product by ID
- * 
+ *
  * @param input - Product ID
  * @returns Product DTO
  * @throws TRPCError if product not found
@@ -214,6 +226,10 @@ export async function getProductById(input: GetProductByIdInput): Promise<Produc
     unit: product.unit,
     images: product.images,
     stockType: product.stockType,
+    dailyRentalRate: product.dailyRentalRate,
+    monthlyRentalRate: product.monthlyRentalRate,
+    insuranceFee: product.insuranceFee,
+    replacementPrice: product.replacementPrice,
     createdBy: product.createdBy.toString(),
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
@@ -222,10 +238,10 @@ export async function getProductById(input: GetProductByIdInput): Promise<Produc
 
 /**
  * List products with filtering, pagination, and search
- * 
+ *
  * Supports filtering by stock type and category, and searching by
  * name, SKU, or description.
- * 
+ *
  * @param input - List filters, pagination, and search parameters
  * @returns Object containing products array and total count
  */
@@ -237,7 +253,7 @@ export async function listProducts(
   // ========================================================================
   // Build Query Filters
   // ========================================================================
-  
+
   const query: Record<string, unknown> = {};
 
   // Filter by stock type (buy or rental)
@@ -262,14 +278,11 @@ export async function listProducts(
   // ========================================================================
   // Execute Query with Pagination
   // ========================================================================
-  
+
   const skip = (input.page - 1) * input.limit;
   const total = await Product.countDocuments(query);
 
-  const products = await Product.find(query)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(input.limit);
+  const products = await Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(input.limit);
 
   return {
     products: products.map((product) => ({
@@ -282,6 +295,8 @@ export async function listProducts(
       unit: product.unit,
       images: product.images,
       stockType: product.stockType,
+      dailyRentalRate: product.dailyRentalRate,
+      monthlyRentalRate: product.monthlyRentalRate,
       createdBy: product.createdBy.toString(),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
@@ -292,10 +307,10 @@ export async function listProducts(
 
 /**
  * Delete a product
- * 
+ *
  * Permanently removes a product from the system.
  * Logs the deletion activity.
- * 
+ *
  * @param userId - ID of user deleting the product
  * @param input - Product ID to delete
  * @returns Success status
@@ -319,13 +334,7 @@ export async function deleteProduct(
   await Product.findByIdAndDelete(input.id);
 
   // Log activity
-  await activityLogService.createActivityLog(
-    userId,
-    "delete",
-    "product",
-    input.id,
-    productName
-  );
+  await activityLogService.createActivityLog(userId, "delete", "product", input.id, productName);
 
   return { success: true };
 }

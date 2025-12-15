@@ -25,10 +25,12 @@ const rentalAssetSchema = new Schema<IRentalAsset>(
     assetCode: {
       type: String,
       required: [true, "Asset code is required"],
-      unique: true,
       trim: true,
       uppercase: true,
-      match: [/^[A-Z0-9-_]+$/, "Asset code can only contain uppercase letters, numbers, hyphens, and underscores"],
+      match: [
+        /^[A-Z0-9-_]+$/,
+        "Asset code can only contain uppercase letters, numbers, hyphens, and underscores",
+      ],
     },
     status: {
       type: String,
