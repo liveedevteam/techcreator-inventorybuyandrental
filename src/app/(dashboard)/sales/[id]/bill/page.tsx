@@ -70,6 +70,11 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
             .payment-title { font-weight: 700; color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 6px; margin-bottom: 10px; }
             .payment-info { font-size: 13px; color: #475569; line-height: 1.7; }
             .payment-info strong { color: #1e40af; }
+            .signature-section { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; }
+            .signature-box { text-align: center; }
+            .signature-label { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 60px; }
+            .signature-line { border-top: 2px solid #1e293b; margin: 0 auto; width: 200px; margin-top: 60px; }
+            .signature-name { font-size: 13px; color: #64748b; margin-top: 8px; }
             .footer { margin-top: 28px; text-align: center; color: #64748b; font-size: 12px; }
             @media print { body { padding: 0; background: white; } .no-print { display: none; } .bill-container { box-shadow: none; } }
           </style>
@@ -78,7 +83,7 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
           <div class="bill-container">
             <div class="header-section">
               <div class="company-logo">
-                ${ownerConfig.logo && ownerConfig.logo !== "/logo.png" ? `<img src="${ownerConfig.logo}" alt="Logo" />` : ""}
+                ${ownerConfig.logo ? `<img src="${ownerConfig.logo}" alt="Logo" />` : ""}
               </div>
               <div class="company-info">
                 <div class="company-name">${ownerConfig.name}</div>
@@ -198,6 +203,19 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
               </div>
             </div>
 
+            <div class="signature-section">
+              <div class="signature-box">
+                <div class="signature-label">ลายมือชื่อลูกค้า</div>
+                <div class="signature-line"></div>
+                <div class="signature-name">(${sale.customerName || ""})</div>
+              </div>
+              <div class="signature-box">
+                <div class="signature-label">ลายมือชื่อผู้ขาย</div>
+                <div class="signature-line"></div>
+                <div class="signature-name">(${ownerConfig.bankAccountName || ""})</div>
+              </div>
+            </div>
+
             <div class="footer">
               <p>ขอบคุณที่ใช้บริการ</p>
             </div>
@@ -248,7 +266,7 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
         <div className="bg-white p-8 shadow-xl rounded-lg border border-border/50">
           <div className="flex justify-between items-start border-b border-border pb-4 mb-4">
             <div className="flex items-start gap-4">
-              {ownerConfig.logo && ownerConfig.logo !== "/logo.png" && (
+              {ownerConfig.logo && (
                 <div className="w-32">
                   <Image
                     src={ownerConfig.logo}
@@ -418,6 +436,25 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <div className="mt-8 pt-6 border-t-2 border-border grid grid-cols-2 gap-10">
+            <div className="text-center">
+              <div className="text-sm font-semibold text-muted-foreground mb-16">
+                ลายมือชื่อลูกค้า
+              </div>
+              <div className="border-t-2 border-foreground w-48 mx-auto mt-16"></div>
+              <div className="text-xs text-muted-foreground mt-2">({sale.customerName || ""})</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-semibold text-muted-foreground mb-16">
+                ลายมือชื่อผู้ขาย
+              </div>
+              <div className="border-t-2 border-foreground w-48 mx-auto mt-16"></div>
+              <div className="text-xs text-muted-foreground mt-2">
+                ({ownerConfig.bankAccountName || ""})
+              </div>
             </div>
           </div>
 

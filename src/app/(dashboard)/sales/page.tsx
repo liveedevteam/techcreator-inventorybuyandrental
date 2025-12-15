@@ -322,10 +322,17 @@ export default function SalesPage() {
   };
 
   const onSubmit = (data: CreateSaleInput | UpdateSaleInput) => {
+    // Ensure deposit is a number (already parsed in input onChange, but safety check)
+    const processedData = {
+      ...data,
+      deposit:
+        typeof data.deposit === "string" ? parseFloat(data.deposit) || 0 : (data.deposit ?? 0),
+    };
+
     if (editingSale) {
-      updateMutation.mutate({ id: editingSale.id, ...data } as UpdateSaleInput);
+      updateMutation.mutate({ id: editingSale.id, ...processedData } as UpdateSaleInput);
     } else {
-      createMutation.mutate(data as CreateSaleInput);
+      createMutation.mutate(processedData as CreateSaleInput);
     }
   };
 
@@ -822,7 +829,20 @@ export default function SalesPage() {
                       <FormItem>
                         <FormLabel>เงินมัดจำ</FormLabel>
                         <FormControl>
-                          <Input type="number" min="0" step="0.01" {...field} />
+                          <Input
+                            type="text"
+                            value={field.value?.toString() || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // Allow empty string or valid number input (including decimals)
+                              if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                                // Parse to number immediately but allow empty string for better UX
+                                const numValue = value === "" ? 0 : parseFloat(value) || 0;
+                                field.onChange(numValue);
+                              }
+                            }}
+                            placeholder="0"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
