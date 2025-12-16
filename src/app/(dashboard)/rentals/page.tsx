@@ -18,7 +18,7 @@ import {
   Input,
 } from "@/components";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Plus, Loader2, Eye, X, Printer } from "lucide-react";
+import { Calendar, Plus, Loader2, Eye, X, Printer, Trash2 } from "lucide-react";
 import { createRentalSchema } from "@/lib/trpc/schemas";
 import type { RentalStatus } from "@/lib/trpc/schemas";
 import type { CreateRentalInput, UpdateRentalStatusInput } from "@/lib/trpc/schemas";
@@ -76,6 +76,7 @@ export default function RentalsPage() {
       endDate: new Date(),
       dailyRate: 0,
       deposit: 0,
+      shippingCost: 0,
       notes: "",
     },
   });
@@ -110,6 +111,7 @@ export default function RentalsPage() {
       endDate: new Date(),
       dailyRate: 0,
       deposit: 0,
+      shippingCost: 0,
       notes: "",
     });
     setIsModalOpen(true);
@@ -446,179 +448,151 @@ export default function RentalsPage() {
                   control={form.control}
                   name="assets"
                   render={({ field }) => {
-                    // Helper to get selected quantity for a group
-                    const getGroupQuantity = (groupKey: string) => {
-                      const current = field.value || [];
-                      // Count how many asset IDs from this group are selected
-                      const group = availableGroupedAssets?.find(
-                        (g) => `${g.assetCode}_${g.productId}` === groupKey
+                    const items = field.value || [];
+
+                    const addItem = () => {
+                      // Find first available asset group
+                      const firstAvailableGroup = availableGroupedAssets?.find(
+                        (g) => g.availableCount > 0
                       );
-                      if (!group) return 0;
-                      return current.filter((a: { assetId: string; quantity: number }) =>
-                        group.assetIds.includes(a.assetId)
-                      ).length;
+                      if (!firstAvailableGroup || firstAvailableGroup.assetIds.length === 0) return;
+
+                      // Add first available asset from the group
+                      field.onChange([
+                        ...items,
+                        {
+                          assetId: firstAvailableGroup.assetIds[0],
+                          quantity: 1,
+                        },
+                      ]);
                     };
 
-                    // Helper to update selection for a group
-                    const updateGroupSelection = (groupKey: string, quantity: number) => {
-                      const group = availableGroupedAssets?.find(
-                        (g) => `${g.assetCode}_${g.productId}` === groupKey
-                      );
-                      if (!group) return;
+                    const removeItem = (index: number) => {
+                      const newItems = items.filter((_: unknown, i: number) => i !== index);
+                      field.onChange(newItems);
+                    };
 
-                      const current = field.value || [];
-                      // Remove all assets from this group
-                      const filtered = current.filter(
-                        (a: { assetId: string; quantity: number }) =>
-                          !group.assetIds.includes(a.assetId)
-                      );
-
-                      // Add the requested quantity of individual asset IDs
-                      const selectedAssetIds = group.assetIds.slice(
-                        0,
-                        Math.min(quantity, group.availableCount)
-                      );
-                      const newSelections = selectedAssetIds.map((assetId) => ({
-                        assetId,
-                        quantity: 1,
-                      }));
-
-                      field.onChange([...filtered, ...newSelections]);
+                    const updateItem = (
+                      index: number,
+                      fieldName: "assetId" | "quantity",
+                      value: string | number
+                    ) => {
+                      const newItems = [...items];
+                      if (fieldName === "assetId") {
+                        // When changing asset, get first available asset from the selected group
+                        const group = availableGroupedAssets?.find(
+                          (g) => `${g.assetCode}_${g.productId}` === value
+                        );
+                        if (group && group.assetIds.length > 0) {
+                          newItems[index] = {
+                            ...newItems[index],
+                            assetId: group.assetIds[0],
+                            quantity: newItems[index].quantity || 1,
+                          };
+                        }
+                      } else {
+                        newItems[index] = {
+                          ...newItems[index],
+                          quantity: Math.max(1, value as number),
+                        };
+                      }
+                      field.onChange(newItems);
                     };
 
                     return (
                       <FormItem>
-                        <FormLabel>{t.rental.assets}</FormLabel>
+                        <div className="flex justify-between items-center mb-2">
+                          <FormLabel>{t.rental.assets}</FormLabel>
+                          <Button type="button" variant="outline" size="sm" onClick={addItem}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            เพิ่มรายการ
+                          </Button>
+                        </div>
                         <FormControl>
-                          <div className="space-y-3">
-                            {availableGroupedAssets?.map((group) => {
-                              const groupKey = `${group.assetCode}_${group.productId}`;
-                              const quantity = getGroupQuantity(groupKey);
-                              const isSelected = quantity > 0;
+                          <div className="space-y-2">
+                            {items.map(
+                              (item: { assetId: string; quantity: number }, index: number) => {
+                                // Find which group this asset belongs to
+                                const group = availableGroupedAssets?.find((g) =>
+                                  g.assetIds.includes(item.assetId)
+                                );
+                                const groupKey = group
+                                  ? `${group.assetCode}_${group.productId}`
+                                  : "";
 
-                              return (
-                                <div
-                                  key={groupKey}
-                                  className="flex items-center gap-3 p-2 border border-border rounded-md"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        updateGroupSelection(groupKey, 1);
-                                      } else {
-                                        updateGroupSelection(groupKey, 0);
-                                      }
-                                    }}
-                                    className="rounded border-border"
-                                  />
-                                  <div className="flex-1">
-                                    <div className="font-medium text-foreground">
-                                      <span className="font-semibold">{group.assetCode}</span>
-                                      {group.productName && (
-                                        <span className="ml-2 text-foreground/90">
-                                          - {group.productName}
-                                        </span>
-                                      )}
+                                return (
+                                  <div
+                                    key={index}
+                                    className="grid grid-cols-12 gap-2 items-end p-3 border border-border rounded"
+                                  >
+                                    <div className="col-span-6">
+                                      <label className="text-sm text-muted-foreground mb-1 block">
+                                        เลือกทรัพย์สิน
+                                      </label>
+                                      <select
+                                        value={groupKey}
+                                        onChange={(e) =>
+                                          updateItem(index, "assetId", e.target.value)
+                                        }
+                                        className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground"
+                                      >
+                                        <option value="">เลือกทรัพย์สิน</option>
+                                        {availableGroupedAssets?.map((g) => {
+                                          const key = `${g.assetCode}_${g.productId}`;
+                                          const availableCount = g.availableCount;
+                                          const isOutOfStock = availableCount === 0;
+                                          return (
+                                            <option key={key} value={key} disabled={isOutOfStock}>
+                                              {g.assetCode}
+                                              {g.productName ? ` - ${g.productName}` : ""}
+                                              {g.dailyRentalRate
+                                                ? ` (${g.dailyRentalRate.toLocaleString("th-TH", {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                  })} ฿/วัน)`
+                                                : ""}
+                                              {` - คงเหลือ ${availableCount} ชิ้น`}
+                                              {isOutOfStock ? " [หมด]" : ""}
+                                            </option>
+                                          );
+                                        })}
+                                      </select>
                                     </div>
-                                    <div className="text-sm text-muted-foreground mt-1">
-                                      {group.dailyRentalRate && (
-                                        <span>
-                                          {group.dailyRentalRate.toLocaleString("th-TH", {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                          })}{" "}
-                                          ฿/วัน
-                                        </span>
-                                      )}
-                                      <span className="ml-2">
-                                        (คงเหลือ {group.availableCount} ชิ้น)
-                                      </span>
-                                    </div>
-                                  </div>
-                                  {isSelected && (
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-sm text-foreground">จำนวน:</label>
+                                    <div className="col-span-4">
+                                      <label className="text-sm text-muted-foreground mb-1 block">
+                                        จำนวน
+                                      </label>
                                       <Input
                                         type="number"
                                         min="1"
-                                        max={group.availableCount}
-                                        value={quantity}
-                                        onChange={(e) => {
-                                          const newQuantity = Math.min(
-                                            Math.max(1, parseInt(e.target.value) || 1),
-                                            group.availableCount
-                                          );
-                                          updateGroupSelection(groupKey, newQuantity);
-                                        }}
-                                        className="w-20"
+                                        max={group?.availableCount || 999}
+                                        value={item.quantity || 1}
+                                        onChange={(e) =>
+                                          updateItem(
+                                            index,
+                                            "quantity",
+                                            parseInt(e.target.value) || 1
+                                          )
+                                        }
                                       />
                                     </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {field.value && field.value.length > 0 && (
-                              <div className="pt-3 border-t border-border space-y-2">
-                                <div className="text-sm font-semibold text-foreground">
-                                  เลือกแล้ว{" "}
-                                  {
-                                    new Set(
-                                      field.value
-                                        .map((a: { assetId: string }) => {
-                                          const group = availableGroupedAssets?.find((g) =>
-                                            g.assetIds.includes(a.assetId)
-                                          );
-                                          return group
-                                            ? `${group.assetCode}_${group.productId}`
-                                            : null;
-                                        })
-                                        .filter(Boolean)
-                                    ).size
-                                  }{" "}
-                                  รายการ (รวม {field.value.length} ชิ้น)
-                                </div>
-                                <div className="space-y-1 max-h-32 overflow-y-auto">
-                                  {Array.from(
-                                    new Set(
-                                      field.value
-                                        .map((a: { assetId: string }) => {
-                                          const group = availableGroupedAssets?.find((g) =>
-                                            g.assetIds.includes(a.assetId)
-                                          );
-                                          return group
-                                            ? `${group.assetCode}_${group.productId}`
-                                            : null;
-                                        })
-                                        .filter(Boolean)
-                                    )
-                                  ).map((groupKey) => {
-                                    const group = availableGroupedAssets?.find(
-                                      (g) => `${g.assetCode}_${g.productId}` === groupKey
-                                    );
-                                    if (!group) return null;
-                                    const selectedCount = field.value.filter(
-                                      (a: { assetId: string }) => group.assetIds.includes(a.assetId)
-                                    ).length;
-                                    return (
-                                      <div
-                                        key={groupKey}
-                                        className="text-xs text-muted-foreground bg-muted/50 p-2 rounded"
+                                    <div className="col-span-2">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeItem(index)}
                                       >
-                                        <span className="font-medium text-foreground">
-                                          {group.assetCode}
-                                        </span>
-                                        {group.productName && (
-                                          <span className="ml-1">- {group.productName}</span>
-                                        )}
-                                        <span className="ml-2 text-muted-foreground">
-                                          ({selectedCount} ชิ้น)
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                                        <Trash2 className="h-4 w-4 text-error" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            )}
+                            {items.length === 0 && (
+                              <div className="text-center py-8 text-muted-foreground border border-border rounded">
+                                ยังไม่มีรายการ คลิก &quot;เพิ่มรายการ&quot; เพื่อเพิ่ม
                               </div>
                             )}
                           </div>
@@ -729,15 +703,46 @@ export default function RentalsPage() {
                     name="deposit"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t.rental.deposit}</FormLabel>
+                        <FormLabel>เงินประกัน</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            type="text"
                             {...field}
-                            value={field.value || 0}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            value={field.value?.toString() || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                                const numValue = value === "" ? 0 : parseFloat(value) || 0;
+                                field.onChange(numValue);
+                              }
+                            }}
+                            placeholder="0"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="shippingCost"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ค่าขนส่ง</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="text"
+                            {...field}
+                            value={field.value?.toString() || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                                const numValue = value === "" ? 0 : parseFloat(value) || 0;
+                                field.onChange(numValue);
+                              }
+                            }}
+                            placeholder="0"
                           />
                         </FormControl>
                         <FormMessage />

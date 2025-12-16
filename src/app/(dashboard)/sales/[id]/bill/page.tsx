@@ -68,7 +68,9 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
             .summary-table .total { background: #bfdbfe; color: #1e40af; font-size: 15px; }
             .payment-section { margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
             .payment-title { font-weight: 700; color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 6px; margin-bottom: 10px; }
-            .payment-info { font-size: 13px; color: #475569; line-height: 1.7; }
+            .payment-content { display: flex; align-items: center; gap: 16px; }
+            .bank-logo { width: 80px; height: auto; object-fit: contain; }
+            .payment-info { font-size: 13px; color: #475569; line-height: 1.7; flex: 1; }
             .payment-info strong { color: #1e40af; }
             .signature-section { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; }
             .signature-box { text-align: center; }
@@ -196,10 +198,14 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
 
             <div class="payment-section">
               <div class="payment-title">ช่องทางการชำระเงิน</div>
-              <div class="payment-info">
-                <p><strong>${ownerConfig.bankName}</strong></p>
-                <p>เลขที่บัญชี: <strong>${ownerConfig.bankAccount}</strong></p>
-                <p>ชื่อบัญชี: <strong>${ownerConfig.bankAccountName}</strong></p>
+              <div class="payment-content">
+                <img src="/bank-logo.png" alt="Bank Logo" class="bank-logo" />
+                <div class="payment-info">
+                  <p><strong>${ownerConfig.bankName}</strong></p>
+                  <p>${ownerConfig.bankBranch || ""}</p>
+                  <p>เลขที่บัญชี: <strong>${ownerConfig.bankAccount}</strong></p>
+                  <p>ชื่อบัญชี: <strong>${ownerConfig.bankAccountName}</strong></p>
+                </div>
               </div>
             </div>
 
@@ -368,16 +374,28 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
             <div className="space-y-2">
               <div className="border border-border rounded-lg p-3 bg-muted/20">
                 <div className="font-bold text-primary mb-2">ช่องทางการชำระเงิน</div>
-                <div className="text-sm text-muted-foreground leading-6">
-                  <div>
-                    <strong className="text-primary">{ownerConfig.bankName}</strong>
-                  </div>
-                  <div>
-                    เลขที่บัญชี: <strong className="text-primary">{ownerConfig.bankAccount}</strong>
-                  </div>
-                  <div>
-                    ชื่อบัญชี:{" "}
-                    <strong className="text-primary">{ownerConfig.bankAccountName}</strong>
+                <div className="flex items-center gap-3">
+                  <Image
+                    src="/bank-logo.png"
+                    alt="Bank Logo"
+                    width={80}
+                    height={50}
+                    className="object-contain"
+                    unoptimized
+                  />
+                  <div className="text-sm text-muted-foreground leading-6 flex-1">
+                    <div>
+                      <strong className="text-primary">{ownerConfig.bankName}</strong>
+                    </div>
+                    {ownerConfig.bankBranch && <div>{ownerConfig.bankBranch}</div>}
+                    <div>
+                      เลขที่บัญชี:{" "}
+                      <strong className="text-primary">{ownerConfig.bankAccount}</strong>
+                    </div>
+                    <div>
+                      ชื่อบัญชี:{" "}
+                      <strong className="text-primary">{ownerConfig.bankAccountName}</strong>
+                    </div>
                   </div>
                 </div>
               </div>

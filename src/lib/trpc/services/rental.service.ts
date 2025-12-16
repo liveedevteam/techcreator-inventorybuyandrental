@@ -45,6 +45,8 @@ export interface RentalDTO {
     assetCode: string;
     productName?: string;
     quantity: number;
+    insuranceFee?: number;
+    replacementPrice?: number;
   }>;
   startDate: Date;
   endDate: Date;
@@ -53,6 +55,7 @@ export interface RentalDTO {
   dailyRate: number;
   totalAmount: number;
   deposit: number;
+  shippingCost: number;
   penaltyRate?: number;
   penaltyAmount: number;
   status: "pending" | "active" | "completed" | "cancelled";
@@ -383,6 +386,7 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
     expectedReturnDate: input.expectedReturnDate ? new Date(input.expectedReturnDate) : undefined,
     dailyRate: Number(input.dailyRate),
     deposit: Number(input.deposit || 0),
+    shippingCost: Number(input.shippingCost || 0),
     notes: input.notes || undefined,
     rentalNumber,
     totalAmount: Number(totalAmount),
@@ -504,6 +508,7 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -668,6 +673,7 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -845,6 +851,7 @@ export async function updateRentalStatus(
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -869,7 +876,7 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
     .populate({
       path: "assets.assetId",
       select: "assetCode productId",
-      populate: { path: "productId", select: "name" },
+      populate: { path: "productId", select: "name insuranceFee replacementPrice" },
     })
     .lean();
 
@@ -900,18 +907,25 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
             assetCode: "",
             productName: undefined,
             quantity: item.quantity,
+            insuranceFee: undefined,
+            replacementPrice: undefined,
           };
         }
         const asset = item.assetId;
+        const product = asset.productId;
+        const isPopulatedProduct =
+          typeof product === "object" && product !== null && "_id" in product && "name" in product;
         return {
           id: asset._id.toString(),
           assetCode: asset.assetCode || "",
-          productName:
-            typeof asset.productId === "object" &&
-            asset.productId !== null &&
-            "_id" in asset.productId &&
-            "name" in asset.productId
-              ? asset.productId.name
+          productName: isPopulatedProduct ? product.name : undefined,
+          insuranceFee:
+            isPopulatedProduct && "insuranceFee" in product
+              ? (product.insuranceFee as number | undefined)
+              : undefined,
+          replacementPrice:
+            isPopulatedProduct && "replacementPrice" in product
+              ? (product.replacementPrice as number | undefined)
               : undefined,
           quantity: item.quantity,
         };
@@ -923,6 +937,7 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -1085,6 +1100,7 @@ export async function listRentals(
         dailyRate: rental.dailyRate,
         totalAmount: rental.totalAmount,
         deposit: rental.deposit,
+        shippingCost: rental.shippingCost ?? 0,
         penaltyRate: rental.penaltyRate,
         penaltyAmount: penaltyAmount,
         status: rental.status,
@@ -1230,6 +1246,7 @@ export async function cancelRental(userId: string, input: CancelRentalInput): Pr
     dailyRate: updatedRental.dailyRate,
     totalAmount: updatedRental.totalAmount,
     deposit: updatedRental.deposit,
+    shippingCost: updatedRental.shippingCost ?? 0,
     penaltyRate: updatedRental.penaltyRate,
     penaltyAmount: updatedRental.penaltyAmount || 0,
     status: updatedRental.status,

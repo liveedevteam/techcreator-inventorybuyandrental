@@ -31,7 +31,8 @@ export const createRentalSchema = z
     }),
     expectedReturnDate: z.coerce.date().optional(),
     dailyRate: z.number().min(0, "อัตรารายวันต้องไม่เป็นค่าลบ"),
-    deposit: z.number().min(0, "เงินมัดจำต้องไม่เป็นค่าลบ").default(0),
+    deposit: z.number().min(0, "เงินประกันต้องไม่เป็นค่าลบ").default(0),
+    shippingCost: z.number().min(0, "ค่าขนส่งต้องไม่เป็นค่าลบ").default(0),
     notes: z.string().max(1000, "หมายเหตุไม่เกิน 1000 ตัวอักษร").optional(),
   })
   .refine((data) => data.endDate > data.startDate, {
@@ -63,7 +64,8 @@ export const updateRentalSchema = z
     endDate: z.coerce.date().optional(),
     expectedReturnDate: z.coerce.date().optional(),
     dailyRate: z.number().min(0, "อัตรารายวันต้องไม่เป็นค่าลบ").optional(),
-    deposit: z.number().min(0, "เงินมัดจำต้องไม่เป็นค่าลบ").optional(),
+    deposit: z.number().min(0, "เงินประกันต้องไม่เป็นค่าลบ").optional(),
+    shippingCost: z.number().min(0, "ค่าขนส่งต้องไม่เป็นค่าลบ").optional(),
     notes: z.string().max(1000, "หมายเหตุไม่เกิน 1000 ตัวอักษร").optional(),
   })
   .refine(

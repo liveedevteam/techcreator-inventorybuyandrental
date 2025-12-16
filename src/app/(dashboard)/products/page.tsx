@@ -30,6 +30,12 @@ export default function ProductsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [stockTypeFilter, setStockTypeFilter] = useState<"buy" | "rental" | "all">("all");
 
+  const notify = (title: string, description?: string) => {
+    if (typeof window !== "undefined") {
+      window.alert(description ? `${title}\n${description}` : title);
+    }
+  };
+
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.product.list.useQuery({
@@ -42,6 +48,10 @@ export default function ProductsPage() {
     onSuccess: () => {
       utils.product.list.invalidate();
       closeModal();
+      notify("สร้างสินค้าสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถสร้างสินค้าได้", err.message);
     },
   });
 
@@ -49,6 +59,10 @@ export default function ProductsPage() {
     onSuccess: () => {
       utils.product.list.invalidate();
       closeModal();
+      notify("อัปเดตสินค้าสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถอัปเดตสินค้าได้", err.message);
     },
   });
 
@@ -56,6 +70,10 @@ export default function ProductsPage() {
     onSuccess: () => {
       utils.product.list.invalidate();
       setDeleteConfirmId(null);
+      notify("ลบสินค้าสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถลบสินค้าได้", err.message);
     },
   });
 

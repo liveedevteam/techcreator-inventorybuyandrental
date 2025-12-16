@@ -297,6 +297,8 @@ export async function listProducts(
       stockType: product.stockType,
       dailyRentalRate: product.dailyRentalRate,
       monthlyRentalRate: product.monthlyRentalRate,
+      insuranceFee: product.insuranceFee,
+      replacementPrice: product.replacementPrice,
       createdBy: product.createdBy.toString(),
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,

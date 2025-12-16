@@ -41,6 +41,7 @@ export interface IRental {
   dailyRate: number;
   totalAmount: number;
   deposit: number;
+  shippingCost: number;
   penaltyRate?: number;
   penaltyAmount: number;
   status: RentalStatus;
@@ -195,6 +196,12 @@ const rentalSchema = new Schema<IRental>(
       type: Number,
       required: [true, "Deposit is required"],
       min: [0, "Deposit cannot be negative"],
+      default: 0,
+    },
+    shippingCost: {
+      type: Number,
+      required: [true, "Shipping cost is required"],
+      min: [0, "Shipping cost cannot be negative"],
       default: 0,
     },
     penaltyRate: {
