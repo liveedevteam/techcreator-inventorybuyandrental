@@ -77,8 +77,8 @@ export default function ProductsPage() {
     },
   });
 
-  const form = useForm<CreateProductInput | UpdateProductInput>({
-    resolver: zodResolver(editingProduct ? updateProductSchema : createProductSchema),
+  const form = useForm<CreateProductInput>({
+    resolver: zodResolver(createProductSchema),
     defaultValues: {
       name: "",
       description: "",
@@ -153,11 +153,17 @@ export default function ProductsPage() {
     form.reset();
   };
 
-  const onSubmit = (data: CreateProductInput | UpdateProductInput) => {
+  const onSubmit = (data: CreateProductInput) => {
     if (editingProduct) {
-      updateMutation.mutate({ id: editingProduct.id, ...data } as UpdateProductInput);
+      // For edit mode, add the id to the data
+      // The form validation with createProductSchema ensures required fields are present
+      // The updateProductSchema on the server will handle the update validation
+      updateMutation.mutate({
+        id: editingProduct.id,
+        ...data,
+      } as UpdateProductInput);
     } else {
-      createMutation.mutate(data as CreateProductInput);
+      createMutation.mutate(data);
     }
   };
 
@@ -466,7 +472,12 @@ export default function ProductsPage() {
                           <Input
                             type="number"
                             {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value ? parseFloat(e.target.value) : undefined
+                              )
+                            }
                           />
                         </FormControl>
                         <FormMessage />

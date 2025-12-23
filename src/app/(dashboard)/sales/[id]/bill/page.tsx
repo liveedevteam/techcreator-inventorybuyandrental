@@ -37,18 +37,28 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
         <head>
           <title>ใบเสร็จรับเงิน - ${sale.billNumber || ""}</title>
           <style>
-            @page { size: A4; margin: 1cm; }
+            @page { 
+              size: A4; 
+              margin: 1cm 1cm 1cm 1cm;
+            }
             * { box-sizing: border-box; }
             body { font-family: 'Sarabun', 'Kanit', 'Prompt', sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #1a1a1a; }
             .bill-container { max-width: 210mm; margin: 0 auto; background: white; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-            .header-section { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 3px solid #2563eb; }
+            .header-section { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 3px solid #2563eb; page-break-after: avoid; }
             .company-logo { width: 140px; }
             .company-logo img { width: 100%; height: auto; object-fit: contain; border-radius: 4px; }
             .company-info { flex: 1; margin-left: 16px; padding-left: 16px; border-left: 2px solid #e5e7eb; }
             .company-name { font-size: 18px; font-weight: 700; color: #1e40af; margin-bottom: 6px; }
             .company-address { font-size: 13px; color: #4b5563; line-height: 1.5; }
             .company-phone { font-size: 14px; color: #1e40af; font-weight: 600; margin-top: 6px; }
-            .document-title { text-align: right; color: #1e293b; }
+            .document-title { text-align: right; color: #1e293b; position: relative; }
+            .page-number-header {
+              display: none;
+              font-size: 12px;
+              color: #475569;
+              font-weight: 700;
+              margin-bottom: 4px;
+            }
             .document-title h1 { margin: 0; font-size: 20px; font-weight: 800; }
             .document-title p { margin: 4px 0 0 0; font-size: 13px; color: #475569; }
             .meta-section { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; margin: 16px 0; }
@@ -66,19 +76,52 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
             .summary-table .label { font-weight: 600; color: #475569; }
             .summary-table .value { text-align: right; font-weight: 700; color: #1e293b; }
             .summary-table .total { background: #bfdbfe; color: #1e40af; font-size: 15px; }
-            .payment-section { margin-top: 16px; padding: 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
-            .payment-title { font-weight: 700; color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 6px; margin-bottom: 10px; }
-            .payment-content { display: flex; align-items: center; gap: 16px; }
-            .bank-logo { width: 80px; height: auto; object-fit: contain; }
-            .payment-info { font-size: 13px; color: #475569; line-height: 1.7; flex: 1; }
-            .payment-info strong { color: #1e40af; }
+            .page-break-wrapper {
+              page-break-before: auto;
+            }
+            .payment-section { margin-top: 16px; padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+            .payment-title { font-weight: 700; color: #1e40af; border-bottom: 2px solid #2563eb; padding-bottom: 4px; margin-bottom: 8px; font-size: 13px; }
+            .payment-content { display: flex; align-items: center; gap: 12px; }
+            .bank-logo { width: 60px; height: auto; object-fit: contain; }
+            .payment-info { font-size: 11px; color: #475569; line-height: 1.5; flex: 1; }
+            .payment-info strong { color: #1e40af; font-size: 11px; }
+            .payment-info p { margin: 2px 0; }
             .signature-section { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 20px; border-top: 2px solid #e2e8f0; }
             .signature-box { text-align: center; }
             .signature-label { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 60px; }
             .signature-line { border-top: 2px solid #1e293b; margin: 0 auto; width: 200px; margin-top: 60px; }
             .signature-name { font-size: 13px; color: #64748b; margin-top: 8px; }
             .footer { margin-top: 28px; text-align: center; color: #64748b; font-size: 12px; }
-            @media print { body { padding: 0; background: white; } .no-print { display: none; } .bill-container { box-shadow: none; } }
+            @media print { 
+              body { padding: 0; background: white; } 
+              .no-print { display: none; } 
+              .bill-container { 
+                box-shadow: none; 
+                padding-top: 1cm;
+              }
+              .page-number-header {
+                display: none;
+              }
+              .header-section {
+                position: relative;
+                margin-top: 0;
+                page-break-after: avoid;
+                page-break-inside: avoid;
+              }
+              .page-break-wrapper {
+                page-break-before: always;
+                padding-top: 1cm;
+              }
+              .payment-section {
+                margin-top: 0;
+              }
+              .signature-section {
+                page-break-inside: avoid;
+              }
+              .footer {
+                page-break-inside: avoid;
+              }
+            }
           </style>
         </head>
         <body>
@@ -93,6 +136,7 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
                 <div class="company-phone">โทร. ${ownerConfig.phone}</div>
               </div>
               <div class="document-title">
+                <div class="page-number-header">หน้า <span class="current-page"></span>/<span class="total-pages">1</span></div>
                 <h1>ใบเสร็จรับเงิน</h1>
                 <p>Sale Bill</p>
               </div>
@@ -196,36 +240,77 @@ export default function SaleBillPage({ params }: SaleBillPageProps) {
               </tbody>
             </table>
 
-            <div class="payment-section">
-              <div class="payment-title">ช่องทางการชำระเงิน</div>
-              <div class="payment-content">
-                <img src="/bank-logo.png" alt="Bank Logo" class="bank-logo" />
-                <div class="payment-info">
-                  <p><strong>${ownerConfig.bankName}</strong></p>
-                  <p>${ownerConfig.bankBranch || ""}</p>
-                  <p>เลขที่บัญชี: <strong>${ownerConfig.bankAccount}</strong></p>
-                  <p>ชื่อบัญชี: <strong>${ownerConfig.bankAccountName}</strong></p>
+            <div class="page-break-wrapper">
+              <div class="payment-section">
+                <div class="payment-title">ช่องทางการชำระเงิน</div>
+                <div class="payment-content">
+                  <img src="/bank-logo.png" alt="Bank Logo" class="bank-logo" />
+                  <div class="payment-info">
+                    <p><strong>${ownerConfig.bankName}</strong></p>
+                    <p>${ownerConfig.bankBranch || ""}</p>
+                    <p>เลขที่บัญชี: <strong>${ownerConfig.bankAccount}</strong></p>
+                    <p>ชื่อบัญชี: <strong>${ownerConfig.bankAccountName}</strong></p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="signature-section">
-              <div class="signature-box">
-                <div class="signature-label">ลายมือชื่อลูกค้า</div>
-                <div class="signature-line"></div>
-                <div class="signature-name">(${sale.customerName || ""})</div>
+              <div class="signature-section">
+                <div class="signature-box">
+                  <div class="signature-label">ลายมือชื่อลูกค้า</div>
+                  <div class="signature-line"></div>
+                  <div class="signature-name">(${sale.customerName || ""})</div>
+                </div>
+                <div class="signature-box">
+                  <div class="signature-label">ลายมือชื่อผู้ขาย</div>
+                  <div class="signature-line"></div>
+                  <div class="signature-name">(${ownerConfig.bankAccountName || ""})</div>
+                </div>
               </div>
-              <div class="signature-box">
-                <div class="signature-label">ลายมือชื่อผู้ขาย</div>
-                <div class="signature-line"></div>
-                <div class="signature-name">(${ownerConfig.bankAccountName || ""})</div>
-              </div>
-            </div>
 
-            <div class="footer">
-              <p>ขอบคุณที่ใช้บริการ</p>
+              <div class="footer">
+                <p>ขอบคุณที่ใช้บริการ</p>
+              </div>
             </div>
           </div>
+          <script>
+            (function() {
+              function updatePageNumbers() {
+                // A4 page height: 29.7cm = 1123px at 96 DPI
+                // Account for margins: 1.5cm top + 1cm bottom = 2.5cm = 95px
+                const pageHeight = 1028; // 1123 - 95 (margins)
+                const body = document.body;
+                const html = document.documentElement;
+                const height = Math.max(
+                  body.scrollHeight,
+                  body.offsetHeight,
+                  html.clientHeight,
+                  html.scrollHeight,
+                  html.offsetHeight
+                );
+                const totalPages = Math.max(1, Math.ceil(height / pageHeight));
+                
+                // Update total pages
+                const totalPagesElements = document.querySelectorAll('.total-pages');
+                totalPagesElements.forEach(el => {
+                  el.textContent = totalPages;
+                });
+              }
+              
+              // Update on load
+              if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                  setTimeout(updatePageNumbers, 100);
+                });
+              } else {
+                setTimeout(updatePageNumbers, 100);
+              }
+              
+              // Update before print
+              window.addEventListener('beforeprint', function() {
+                setTimeout(updatePageNumbers, 50);
+              });
+            })();
+          </script>
         </body>
       </html>
     `);
