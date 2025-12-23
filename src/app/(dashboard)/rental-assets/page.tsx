@@ -18,11 +18,8 @@ import {
   Input,
 } from "@/components";
 import { Textarea } from "@/components/ui/textarea";
-import { Package, Plus, Pencil, X, Loader2 } from "lucide-react";
-import {
-  createRentalAssetSchema,
-  updateRentalAssetSchema,
-} from "@/lib/trpc/schemas";
+import { Package, Plus, Pencil, Loader2 } from "lucide-react";
+import { createRentalAssetSchema, updateRentalAssetSchema } from "@/lib/trpc/schemas";
 import type {
   CreateRentalAssetInput,
   UpdateRentalAssetInput,
@@ -64,19 +61,21 @@ export default function RentalAssetsPage() {
     },
   });
 
-
   const form = useForm({
     resolver: zodResolver(editingAsset ? updateRentalAssetSchema : createRentalAssetSchema),
-    defaultValues: editingAsset ? {
-      id: "",
-      assetCode: "",
-      notes: "",
-    } : {
-      productId: "",
-      assetCode: "",
-      status: "available" as const,
-      notes: "",
-    },
+    defaultValues: editingAsset
+      ? {
+          id: "",
+          assetCode: "",
+          notes: "",
+        }
+      : {
+          productId: "",
+          assetCode: "",
+          quantity: 1,
+          status: "available" as const,
+          notes: "",
+        },
   });
 
   const openCreateModal = () => {
@@ -84,18 +83,45 @@ export default function RentalAssetsPage() {
     form.reset({
       productId: "",
       assetCode: "",
+      quantity: 1,
       status: "available",
       notes: "",
     });
     setIsModalOpen(true);
   };
 
-  const openEditModal = (asset: { id: string; productId: string; assetCode: string; status: string; notes?: string }) => {
+  const openEditModal = (asset: {
+    id: string;
+    productId: string;
+    assetCode: string;
+    statusCounts?: {
+      available: number;
+      rented: number;
+      maintenance: number;
+      reserved: number;
+      damaged: number;
+    };
+    notes?: string;
+  }) => {
     setEditingAsset({ id: asset.id });
+    // Determine the most common status for editing
+    const statusCounts = asset.statusCounts || {
+      available: 0,
+      rented: 0,
+      maintenance: 0,
+      reserved: 0,
+      damaged: 0,
+    };
+    const statuses = Object.entries(statusCounts) as [RentalAssetStatus, number][];
+    const mostCommonStatus = statuses.reduce(
+      (max, [status, count]) => (count > max[1] ? [status, count] : max),
+      ["available" as RentalAssetStatus, 0] as [RentalAssetStatus, number]
+    )[0];
+
     form.reset({
       id: asset.id,
       assetCode: asset.assetCode,
-      status: asset.status as RentalAssetStatus,
+      status: mostCommonStatus,
       notes: asset.notes || "",
     });
     setIsModalOpen(true);
@@ -116,16 +142,22 @@ export default function RentalAssetsPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: "blue" | "success" | "error" | "warning" }> =
-      {
-        available: { label: t.rentalAsset.statusAvailable, color: "success" },
-        rented: { label: t.rentalAsset.statusRented, color: "blue" },
-        maintenance: { label: t.rentalAsset.statusMaintenance, color: "warning" },
-        reserved: { label: t.rentalAsset.statusReserved, color: "blue" },
-        damaged: { label: t.rentalAsset.statusDamaged, color: "error" },
-      };
+    const statusMap: Record<
+      string,
+      { label: string; color: "blue" | "success" | "error" | "warning" }
+    > = {
+      available: { label: t.rentalAsset.statusAvailable, color: "success" },
+      rented: { label: t.rentalAsset.statusRented, color: "blue" },
+      maintenance: { label: t.rentalAsset.statusMaintenance, color: "warning" },
+      reserved: { label: t.rentalAsset.statusReserved, color: "blue" },
+      damaged: { label: t.rentalAsset.statusDamaged, color: "error" },
+    };
     const statusInfo = statusMap[status] || { label: status, color: "blue" };
-    return <Badge variant="status" color={statusInfo.color}>{statusInfo.label}</Badge>;
+    return (
+      <Badge variant="status" color={statusInfo.color}>
+        {statusInfo.label}
+      </Badge>
+    );
   };
 
   return (
@@ -165,40 +197,162 @@ export default function RentalAssetsPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-slate-700">
-                    <th className="text-left p-3 text-sm font-medium text-slate-300">
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left p-3 text-sm font-semibold text-foreground">
                       {t.rentalAsset.assetCode}
                     </th>
-                    <th className="text-left p-3 text-sm font-medium text-slate-300">
+                    <th className="text-left p-3 text-sm font-semibold text-foreground">
                       {t.product.name}
                     </th>
-                    <th className="text-left p-3 text-sm font-medium text-slate-300">
+                    <th className="text-right p-3 text-sm font-semibold text-foreground">
+                      {t.rentalAsset.remaining}
+                    </th>
+                    <th className="text-right p-3 text-sm font-semibold text-foreground">
+                      {t.rentalAsset.dailyRate}
+                    </th>
+                    <th className="text-right p-3 text-sm font-semibold text-foreground">
+                      {t.rentalAsset.monthlyRate}
+                    </th>
+                    <th className="text-right p-3 text-sm font-semibold text-foreground">
+                      {t.rentalAsset.insuranceFee}
+                    </th>
+                    <th className="text-right p-3 text-sm font-semibold text-foreground">
+                      {t.rentalAsset.replacementPrice}
+                    </th>
+                    <th className="text-left p-3 text-sm font-semibold text-foreground">
                       {t.rentalAsset.status}
                     </th>
-                    <th className="text-right p-3 text-sm font-medium text-slate-300">
+                    <th className="text-right p-3 text-sm font-semibold text-foreground">
                       {t.common.actions}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data?.assets.map((asset) => (
-                    <tr key={asset.id} className="border-b border-slate-800">
-                      <td className="p-3 text-sm text-white">{asset.assetCode}</td>
-                      <td className="p-3 text-sm text-slate-300">{asset.productName}</td>
-                      <td className="p-3">{getStatusBadge(asset.status)}</td>
-                      <td className="p-3">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(asset)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {data?.assets.map((asset) => {
+                    // Type guard to check if asset has grouped data
+                    const hasStatusCounts = "statusCounts" in asset && "totalCount" in asset;
+                    const statusCounts = hasStatusCounts ? asset.statusCounts : null;
+                    const availableCount = statusCounts?.available || 0;
+
+                    const hasStatusField = (
+                      value: typeof asset
+                    ): value is typeof asset & { status?: RentalAssetStatus } => "status" in value;
+
+                    // Build status breakdown text
+                    const statusBreakdown = statusCounts
+                      ? Object.entries(statusCounts)
+                          .filter(([, count]) => count > 0)
+                          .map(([status, count]) => {
+                            const statusLabels: Record<string, string> = {
+                              available: t.rentalAsset.statusAvailable,
+                              rented: t.rentalAsset.statusRented,
+                              maintenance: t.rentalAsset.statusMaintenance,
+                              reserved: t.rentalAsset.statusReserved,
+                              damaged: t.rentalAsset.statusDamaged,
+                            };
+                            return `${count} ${statusLabels[status] || status}`;
+                          })
+                          .join(", ")
+                      : null;
+
+                    return (
+                      <tr
+                        key={asset.id}
+                        className="border-b border-border hover:bg-muted/30 transition-colors"
+                      >
+                        <td className="p-3 text-sm font-medium text-foreground">
+                          {asset.assetCode}
+                        </td>
+                        <td className="p-3 text-sm text-foreground">{asset.productName}</td>
+                        <td className="p-3 text-sm text-right text-foreground">
+                          <span className="font-semibold">{availableCount}</span>
+                          <span className="text-muted-foreground text-xs ml-1">ชิ้น</span>
+                        </td>
+                        <td className="p-3 text-sm text-right text-foreground">
+                          {asset.dailyRentalRate !== undefined
+                            ? asset.dailyRentalRate.toLocaleString("th-TH", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "-"}
+                        </td>
+                        <td className="p-3 text-sm text-right text-foreground">
+                          {asset.monthlyRentalRate !== undefined
+                            ? asset.monthlyRentalRate.toLocaleString("th-TH", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "-"}
+                        </td>
+                        <td className="p-3 text-sm text-right text-foreground">
+                          {asset.insuranceFee !== undefined
+                            ? asset.insuranceFee.toLocaleString("th-TH", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "-"}
+                        </td>
+                        <td className="p-3 text-sm text-right text-foreground">
+                          {asset.replacementPrice !== undefined
+                            ? asset.replacementPrice.toLocaleString("th-TH", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "-"}
+                        </td>
+                        <td className="p-3">
+                          {statusBreakdown ? (
+                            <div className="flex flex-col gap-1">
+                              {statusCounts && (
+                                <>
+                                  {statusCounts.available > 0 && (
+                                    <Badge variant="status" color="success" className="text-xs">
+                                      {statusCounts.available} {t.rentalAsset.statusAvailable}
+                                    </Badge>
+                                  )}
+                                  {statusCounts.rented > 0 && (
+                                    <Badge variant="status" color="blue" className="text-xs">
+                                      {statusCounts.rented} {t.rentalAsset.statusRented}
+                                    </Badge>
+                                  )}
+                                  {statusCounts.maintenance > 0 && (
+                                    <Badge variant="status" color="warning" className="text-xs">
+                                      {statusCounts.maintenance} {t.rentalAsset.statusMaintenance}
+                                    </Badge>
+                                  )}
+                                  {statusCounts.reserved > 0 && (
+                                    <Badge variant="status" color="blue" className="text-xs">
+                                      {statusCounts.reserved} {t.rentalAsset.statusReserved}
+                                    </Badge>
+                                  )}
+                                  {statusCounts.damaged > 0 && (
+                                    <Badge variant="status" color="error" className="text-xs">
+                                      {statusCounts.damaged} {t.rentalAsset.statusDamaged}
+                                    </Badge>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            getStatusBadge(
+                              hasStatusField(asset) && asset.status ? asset.status : "available"
+                            )
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditModal(asset)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -209,15 +363,10 @@ export default function RentalAssetsPage() {
       {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-slate-900 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-white">
-                {editingAsset ? t.rentalAsset.edit : t.rentalAsset.create}
-              </h2>
-              <Button variant="ghost" size="sm" onClick={closeModal}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+            <h2 className="text-xl font-bold text-foreground mb-4">
+              {editingAsset ? t.rentalAsset.edit : t.rentalAsset.create}
+            </h2>
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -230,7 +379,7 @@ export default function RentalAssetsPage() {
                       <FormControl>
                         <select
                           {...field}
-                          className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+                          className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground"
                         >
                           <option value="">เลือกสินค้า</option>
                           {products?.products.map((product) => (
@@ -245,19 +394,43 @@ export default function RentalAssetsPage() {
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="assetCode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t.rentalAsset.assetCode}</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="assetCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t.rentalAsset.assetCode}</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="เช่น 001" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {!editingAsset && (
+                    <FormField
+                      control={form.control}
+                      name="quantity"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t.common.quantity}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              {...field}
+                              value={field.value || 1}
+                              onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
-                />
+                </div>
 
                 <FormField
                   control={form.control}
@@ -268,7 +441,7 @@ export default function RentalAssetsPage() {
                       <FormControl>
                         <select
                           {...field}
-                          className="w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-white"
+                          className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground"
                         >
                           <option value="available">{t.rentalAsset.statusAvailable}</option>
                           <option value="rented">{t.rentalAsset.statusRented}</option>

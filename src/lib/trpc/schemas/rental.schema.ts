@@ -8,12 +8,20 @@ export const rentalStatusSchema = z.enum(["pending", "active", "completed", "can
 
 export const createRentalSchema = z
   .object({
-    customerName: z.string().min(1, "ชื่อลูกค้าจำเป็นต้องระบุ").max(200, "ชื่อลูกค้าไม่เกิน 200 ตัวอักษร"),
+    customerName: z
+      .string()
+      .min(1, "ชื่อลูกค้าจำเป็นต้องระบุ")
+      .max(200, "ชื่อลูกค้าไม่เกิน 200 ตัวอักษร"),
     customerPhone: z.string().max(20, "เบอร์โทรศัพท์ไม่เกิน 20 ตัวอักษร").optional(),
     customerEmail: z.string().email("อีเมลไม่ถูกต้อง").optional(),
     customerAddress: z.string().max(500, "ที่อยู่ไม่เกิน 500 ตัวอักษร").optional(),
     assets: z
-      .array(z.string().min(1, "ID ทรัพย์สินจำเป็นต้องระบุ"))
+      .array(
+        z.object({
+          assetId: z.string().min(1, "ID ทรัพย์สินจำเป็นต้องระบุ"),
+          quantity: z.number().int().min(1, "จำนวนต้องไม่น้อยกว่า 1"),
+        })
+      )
       .min(1, "ต้องเลือกทรัพย์สินอย่างน้อย 1 รายการ"),
     startDate: z.coerce.date({
       message: "วันที่เริ่มต้นจำเป็นต้องระบุ",
@@ -23,7 +31,8 @@ export const createRentalSchema = z
     }),
     expectedReturnDate: z.coerce.date().optional(),
     dailyRate: z.number().min(0, "อัตรารายวันต้องไม่เป็นค่าลบ"),
-    deposit: z.number().min(0, "เงินมัดจำต้องไม่เป็นค่าลบ").default(0),
+    deposit: z.number().min(0, "เงินประกันต้องไม่เป็นค่าลบ").default(0),
+    shippingCost: z.number().min(0, "ค่าขนส่งต้องไม่เป็นค่าลบ").default(0),
     notes: z.string().max(1000, "หมายเหตุไม่เกิน 1000 ตัวอักษร").optional(),
   })
   .refine((data) => data.endDate > data.startDate, {
@@ -34,19 +43,29 @@ export const createRentalSchema = z
 export const updateRentalSchema = z
   .object({
     id: z.string().min(1, "ID การเช่าจำเป็นต้องระบุ"),
-    customerName: z.string().min(1, "ชื่อลูกค้าจำเป็นต้องระบุ").max(200, "ชื่อลูกค้าไม่เกิน 200 ตัวอักษร").optional(),
+    customerName: z
+      .string()
+      .min(1, "ชื่อลูกค้าจำเป็นต้องระบุ")
+      .max(200, "ชื่อลูกค้าไม่เกิน 200 ตัวอักษร")
+      .optional(),
     customerPhone: z.string().max(20, "เบอร์โทรศัพท์ไม่เกิน 20 ตัวอักษร").optional(),
     customerEmail: z.string().email("อีเมลไม่ถูกต้อง").optional(),
     customerAddress: z.string().max(500, "ที่อยู่ไม่เกิน 500 ตัวอักษร").optional(),
     assets: z
-      .array(z.string().min(1, "ID ทรัพย์สินจำเป็นต้องระบุ"))
+      .array(
+        z.object({
+          assetId: z.string().min(1, "ID ทรัพย์สินจำเป็นต้องระบุ"),
+          quantity: z.number().int().min(1, "จำนวนต้องไม่น้อยกว่า 1"),
+        })
+      )
       .min(1, "ต้องเลือกทรัพย์สินอย่างน้อย 1 รายการ")
       .optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
     expectedReturnDate: z.coerce.date().optional(),
     dailyRate: z.number().min(0, "อัตรารายวันต้องไม่เป็นค่าลบ").optional(),
-    deposit: z.number().min(0, "เงินมัดจำต้องไม่เป็นค่าลบ").optional(),
+    deposit: z.number().min(0, "เงินประกันต้องไม่เป็นค่าลบ").optional(),
+    shippingCost: z.number().min(0, "ค่าขนส่งต้องไม่เป็นค่าลบ").optional(),
     notes: z.string().max(1000, "หมายเหตุไม่เกิน 1000 ตัวอักษร").optional(),
   })
   .refine(

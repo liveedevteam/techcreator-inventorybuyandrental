@@ -7,7 +7,10 @@ import { z } from "zod";
 export const stockTypeSchema = z.enum(["buy", "rental"]);
 
 export const createProductSchema = z.object({
-  name: z.string().min(1, "ชื่อสินค้าต้องมีอย่างน้อย 1 ตัวอักษร").max(200, "ชื่อสินค้าไม่เกิน 200 ตัวอักษร"),
+  name: z
+    .string()
+    .min(1, "ชื่อสินค้าต้องมีอย่างน้อย 1 ตัวอักษร")
+    .max(200, "ชื่อสินค้าไม่เกิน 200 ตัวอักษร"),
   description: z.string().max(2000, "คำอธิบายไม่เกิน 2000 ตัวอักษร").optional(),
   sku: z
     .string()
@@ -19,11 +22,19 @@ export const createProductSchema = z.object({
   unit: z.string().max(20, "หน่วยไม่เกิน 20 ตัวอักษร").optional(),
   images: z.array(z.string().url("URL รูปภาพไม่ถูกต้อง")).optional(),
   stockType: stockTypeSchema,
+  dailyRentalRate: z.number().min(0, "ค่าเช่ารายวันต้องไม่เป็นค่าลบ").optional(),
+  monthlyRentalRate: z.number().min(0, "ค่าเช่ารายเดือนต้องไม่เป็นค่าลบ").optional(),
+  insuranceFee: z.number().min(0, "ค่าประกันสินค้าต้องไม่เป็นค่าลบ").optional(),
+  replacementPrice: z.number().min(0, "ราคากรณีสูญหายต้องไม่เป็นค่าลบ").optional(),
 });
 
 export const updateProductSchema = z.object({
   id: z.string().min(1, "ID สินค้าจำเป็นต้องระบุ"),
-  name: z.string().min(1, "ชื่อสินค้าต้องมีอย่างน้อย 1 ตัวอักษร").max(200, "ชื่อสินค้าไม่เกิน 200 ตัวอักษร").optional(),
+  name: z
+    .string()
+    .min(1, "ชื่อสินค้าต้องมีอย่างน้อย 1 ตัวอักษร")
+    .max(200, "ชื่อสินค้าไม่เกิน 200 ตัวอักษร")
+    .optional(),
   description: z.string().max(2000, "คำอธิบายไม่เกิน 2000 ตัวอักษร").optional(),
   sku: z
     .string()
@@ -36,6 +47,10 @@ export const updateProductSchema = z.object({
   unit: z.string().max(20, "หน่วยไม่เกิน 20 ตัวอักษร").optional(),
   images: z.array(z.string().url("URL รูปภาพไม่ถูกต้อง")).optional(),
   stockType: stockTypeSchema.optional(),
+  dailyRentalRate: z.number().min(0, "ค่าเช่ารายวันต้องไม่เป็นค่าลบ").optional(),
+  monthlyRentalRate: z.number().min(0, "ค่าเช่ารายเดือนต้องไม่เป็นค่าลบ").optional(),
+  insuranceFee: z.number().min(0, "ค่าประกันสินค้าต้องไม่เป็นค่าลบ").optional(),
+  replacementPrice: z.number().min(0, "ราคากรณีสูญหายต้องไม่เป็นค่าลบ").optional(),
 });
 
 export const getProductByIdSchema = z.object({

@@ -1,6 +1,6 @@
 /**
  * Rental Service
- * 
+ *
  * Handles all rental-related business logic including:
  * - Creating and updating rentals
  * - Managing rental status transitions
@@ -29,7 +29,7 @@ import * as activityLogService from "./activity-log.service";
 
 /**
  * Rental Data Transfer Object
- * 
+ *
  * Represents a rental with all its associated data including customer info,
  * assets, dates, pricing, and status.
  */
@@ -44,6 +44,9 @@ export interface RentalDTO {
     id: string;
     assetCode: string;
     productName?: string;
+    quantity: number;
+    insuranceFee?: number;
+    replacementPrice?: number;
   }>;
   startDate: Date;
   endDate: Date;
@@ -52,6 +55,7 @@ export interface RentalDTO {
   dailyRate: number;
   totalAmount: number;
   deposit: number;
+  shippingCost: number;
   penaltyRate?: number;
   penaltyAmount: number;
   status: "pending" | "active" | "completed" | "cancelled";
@@ -67,10 +71,12 @@ export interface RentalDTO {
 type PopulatedRentalAsset = {
   _id: mongoose.Types.ObjectId;
   assetCode: string;
-  productId: {
-    _id: mongoose.Types.ObjectId;
-    name: string;
-  } | mongoose.Types.ObjectId;
+  productId:
+    | {
+        _id: mongoose.Types.ObjectId;
+        name: string;
+      }
+    | mongoose.Types.ObjectId;
 };
 
 // ============================================================================
@@ -79,10 +85,10 @@ type PopulatedRentalAsset = {
 
 /**
  * Generate unique rental number
- * 
+ *
  * Format: RENT-YYYYMMDD-NNNN
  * Example: RENT-20251214-0001
- * 
+ *
  * @returns Unique rental number string
  */
 async function generateRentalNumber(): Promise<string> {
@@ -110,8 +116,27 @@ async function generateRentalNumber(): Promise<string> {
 }
 
 /**
+ * Safely extract an assetId string from unknown input.
+ */
+function extractAssetIdString(assetId: unknown): string {
+  if (typeof assetId === "string") {
+    return assetId;
+  }
+  if (assetId && typeof assetId === "object" && "_id" in assetId && assetId._id) {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore - guarded by checks above
+    return String(assetId._id);
+  }
+  return "";
+}
+
+function isPopulatedAsset(value: unknown): value is PopulatedRentalAsset {
+  return typeof value === "object" && value !== null && "_id" in value && "assetCode" in value;
+}
+
+/**
  * Calculate total rental amount based on rental period and daily rate
- * 
+ *
  * @param startDate - Rental start date
  * @param endDate - Rental end date
  * @param dailyRate - Daily rental rate
@@ -125,10 +150,10 @@ function calculateTotalAmount(startDate: Date, endDate: Date, dailyRate: number)
 
 /**
  * Calculate penalty amount for overdue rentals
- * 
+ *
  * Penalty is calculated as: (overdue days) × (daily rate) × (penalty rate)
  * Default penalty rate is 1.5x the daily rate.
- * 
+ *
  * @param endDate - Expected return date (end of rental period)
  * @param actualReturnDate - Actual return date
  * @param dailyRate - Daily rental rate
@@ -161,10 +186,10 @@ function calculatePenalty(
 
 /**
  * Create a new rental
- * 
+ *
  * Validates that all assets are available, calculates total amount,
  * generates rental number, and updates asset statuses to "rented".
- * 
+ *
  * @param userId - ID of user creating the rental
  * @param input - Rental creation data
  * @returns Created rental DTO
@@ -173,13 +198,83 @@ function calculatePenalty(
 export async function createRental(userId: string, input: CreateRentalInput): Promise<RentalDTO> {
   await connectToDatabase();
 
-  // Verify all assets exist and are available
+  // Debug: Log the input to see what we're receiving
+  console.log("createRental input.assets type:", typeof input.assets);
+  console.log("createRental input.assets isArray:", Array.isArray(input.assets));
+  console.log("createRental input.assets value:", JSON.stringify(input.assets, null, 2));
+
+  // Validate and normalize assets array
+  // Handle case where assets might be stringified or malformed
+  let assetsArray: Array<{ assetId: string; quantity: number }> = [];
+
+  if (typeof input.assets === "string") {
+    try {
+      const parsed = JSON.parse(input.assets);
+      assetsArray = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Invalid assets format: cannot parse as JSON",
+      });
+    }
+  } else if (Array.isArray(input.assets)) {
+    // Deep clone to ensure we have a plain array
+    assetsArray = JSON.parse(JSON.stringify(input.assets));
+  } else {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Assets must be an array, received: ${typeof input.assets}`,
+    });
+  }
+
+  console.log(
+    "createRental assetsArray after normalization:",
+    JSON.stringify(assetsArray, null, 2)
+  );
+
+  if (assetsArray.length === 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "ต้องเลือกทรัพย์สินอย่างน้อย 1 รายการ",
+    });
+  }
+
+  if (assetsArray.length === 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "ต้องเลือกทรัพย์สินอย่างน้อย 1 รายการ",
+    });
+  }
+
+  // Extract unique asset IDs and verify all assets exist and are available
+  const assetIds = assetsArray
+    .map((a) => {
+      // Ensure assetId is a string
+      if (typeof a.assetId !== "string") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid asset ID format",
+        });
+      }
+      return a.assetId;
+    })
+    .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+  const uniqueAssetIds = [...new Set(assetIds)];
+
+  if (uniqueAssetIds.length === 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "ไม่มี asset ID ที่ถูกต้อง",
+    });
+  }
+
   const assets = await RentalAsset.find({
-    _id: { $in: input.assets },
+    _id: { $in: uniqueAssetIds.map((id) => new mongoose.Types.ObjectId(id)) },
     status: "available",
   });
 
-  if (assets.length !== input.assets.length) {
+  if (assets.length !== uniqueAssetIds.length) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "ทรัพย์สินบางรายการไม่พร้อมใช้งาน",
@@ -192,18 +287,158 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
   // Generate rental number
   const rentalNumber = await generateRentalNumber();
 
-  // Create rental
-  const rental = await Rental.create({
-    ...input,
-    assets: input.assets.map((id) => new mongoose.Types.ObjectId(id)),
-    rentalNumber,
-    totalAmount,
-    createdBy: new mongoose.Types.ObjectId(userId),
+  // Prepare assets array with proper ObjectId conversion
+  // Ensure each item is a plain object, not a Mongoose document or string
+  const rentalAssets = assetsArray.map((a, index) => {
+    // Handle if item is already a string (shouldn't happen, but defensive)
+    if (typeof a === "string") {
+      try {
+        a = JSON.parse(a);
+      } catch {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Asset at index ${index} is invalid: cannot parse as JSON`,
+        });
+      }
+    }
+
+    // Ensure we have a proper object with assetId and quantity
+    if (typeof a !== "object" || a === null || Array.isArray(a)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid asset format at index ${index}: expected object, got ${typeof a}`,
+      });
+    }
+
+    // Extract assetId and quantity, handling various formats
+    const { assetId, quantity } = a as { assetId: unknown; quantity?: unknown };
+
+    if (!assetId) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Asset at index ${index} is missing assetId`,
+      });
+    }
+
+    const assetIdString = String(assetId);
+    if (!mongoose.Types.ObjectId.isValid(assetIdString)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid asset ID at index ${index}: ${assetIdString}`,
+      });
+    }
+
+    const quantityNumber =
+      typeof quantity === "number"
+        ? quantity
+        : typeof quantity === "string"
+          ? parseInt(quantity, 10)
+          : 1;
+
+    if (isNaN(quantityNumber) || quantityNumber < 1) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid quantity at index ${index}: ${quantity}`,
+      });
+    }
+
+    // Return plain object (not Mongoose document) - ensure it's a plain object
+    return {
+      assetId: new mongoose.Types.ObjectId(assetIdString),
+      quantity: quantityNumber,
+    } as { assetId: mongoose.Types.ObjectId; quantity: number };
   });
+
+  // Ensure rentalAssets is a proper array of plain objects
+  if (!Array.isArray(rentalAssets) || rentalAssets.length === 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Invalid assets array format",
+    });
+  }
+
+  // Verify rentalAssets structure one more time
+  for (const asset of rentalAssets) {
+    if (!asset || typeof asset !== "object" || !asset.assetId || !asset.quantity) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Invalid asset structure: ${JSON.stringify(asset)}`,
+      });
+    }
+    if (!(asset.assetId instanceof mongoose.Types.ObjectId)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Asset ID must be ObjectId, got: ${typeof asset.assetId}`,
+      });
+    }
+  }
+
+  // Create rental - use same pattern as sale service
+  // Ensure all data is properly formatted before passing to Mongoose
+  const rentalData = {
+    customerName: input.customerName,
+    customerPhone: input.customerPhone || undefined,
+    customerEmail: input.customerEmail || undefined,
+    customerAddress: input.customerAddress || undefined,
+    assets: rentalAssets, // This should be an array of { assetId: ObjectId, quantity: number }
+    startDate: new Date(input.startDate),
+    endDate: new Date(input.endDate),
+    expectedReturnDate: input.expectedReturnDate ? new Date(input.expectedReturnDate) : undefined,
+    dailyRate: Number(input.dailyRate),
+    deposit: Number(input.deposit || 0),
+    shippingCost: Number(input.shippingCost || 0),
+    notes: input.notes || undefined,
+    rentalNumber,
+    totalAmount: Number(totalAmount),
+    createdBy: new mongoose.Types.ObjectId(userId),
+  };
+
+  // Double-check assets is an array before creating
+  if (!Array.isArray(rentalData.assets)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Assets must be an array, got: ${typeof rentalData.assets}`,
+    });
+  }
+
+  // Final validation: ensure each asset has the correct structure
+  console.log(
+    "createRental rentalData.assets before create:",
+    JSON.stringify(rentalData.assets, null, 2)
+  );
+  console.log("createRental rentalData.assets[0]:", JSON.stringify(rentalData.assets[0], null, 2));
+  console.log(
+    "createRental rentalData.assets[0].assetId instanceof ObjectId:",
+    rentalData.assets[0]?.assetId instanceof mongoose.Types.ObjectId
+  );
+
+  // Try creating with explicit validation
+  let rental;
+  try {
+    rental = await Rental.create(rentalData);
+    console.log("createRental success, rental._id:", rental._id.toString());
+  } catch (error: unknown) {
+    console.error("createRental error:", error);
+    if (error instanceof Error) {
+      console.error("createRental error message:", error.message);
+      console.error("createRental error name:", error.name);
+    }
+    console.error("createRental rentalData.assets:", JSON.stringify(rentalData.assets, null, 2));
+
+    // If it's a validation error, provide more details
+    if (error instanceof Error && error.name === "ValidationError") {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Validation failed: ${error.message}`,
+      });
+    }
+
+    throw error;
+  }
 
   // Update asset statuses to "rented" and link to rental
   await RentalAsset.updateMany(
-    { _id: { $in: input.assets } },
+    { _id: { $in: uniqueAssetIds.map((id) => new mongoose.Types.ObjectId(id)) } },
     {
       $set: {
         status: "rented",
@@ -213,9 +448,9 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
   );
 
   // Populate assets for response
-  const populatedRental = await Rental.findById(rental._id)
+  const populatedRental = await Rental.findById(rental._id.toString())
     .populate({
-      path: "assets",
+      path: "assets.assetId",
       select: "assetCode productId",
       populate: { path: "productId", select: "name" },
     })
@@ -237,13 +472,35 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (populatedRental?.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
-      id: asset._id.toString(),
-      assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
-        ? asset.productId.name 
-        : undefined,
-    })) || [],
+    assets:
+      (
+        populatedRental?.assets as unknown as Array<{
+          assetId: PopulatedRentalAsset | mongoose.Types.ObjectId;
+          quantity: number;
+        }>
+      )?.map((item) => {
+        if (!isPopulatedAsset(item.assetId)) {
+          return {
+            id: extractAssetIdString(item.assetId),
+            assetCode: "",
+            productName: undefined,
+            quantity: item.quantity,
+          };
+        }
+        const asset = item.assetId;
+        return {
+          id: asset._id.toString(),
+          assetCode: asset.assetCode || "",
+          productName:
+            typeof asset.productId === "object" &&
+            asset.productId !== null &&
+            "_id" in asset.productId &&
+            "name" in asset.productId
+              ? asset.productId.name
+              : undefined,
+          quantity: item.quantity,
+        };
+      }) || [],
     startDate: rental.startDate,
     endDate: rental.endDate,
     expectedReturnDate: rental.expectedReturnDate,
@@ -251,6 +508,7 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -263,11 +521,11 @@ export async function createRental(userId: string, input: CreateRentalInput): Pr
 
 /**
  * Update an existing rental
- * 
+ *
  * Handles updates to rental details including:
  * - Recalculating total amount if dates or rate change
  * - Managing asset changes (returning old assets, assigning new ones)
- * 
+ *
  * @param userId - ID of user updating the rental
  * @param input - Rental update data
  * @returns Updated rental DTO
@@ -301,8 +559,11 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
   if (updateData.assets) {
     // Return old assets
     if (oldRental.assets && oldRental.assets.length > 0) {
+      const oldAssetIds = (oldRental.assets as Array<{ assetId: mongoose.Types.ObjectId }>).map(
+        (a) => a.assetId
+      );
       await RentalAsset.updateMany(
-        { _id: { $in: oldRental.assets } },
+        { _id: { $in: oldAssetIds } },
         {
           $set: {
             status: "available",
@@ -313,8 +574,13 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     }
 
     // Verify new assets are available
+    const assetIdsRaw = (updateData.assets as Array<string | { assetId: string }>).map((v) =>
+      typeof v === "string" ? v : v.assetId
+    );
+    const assetObjectIds = assetIdsRaw.map((id) => new mongoose.Types.ObjectId(id));
+
     const newAssets = await RentalAsset.find({
-      _id: { $in: updateData.assets.map((id: string) => new mongoose.Types.ObjectId(id)) },
+      _id: { $in: assetObjectIds },
       status: "available",
     });
 
@@ -327,7 +593,7 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
 
     // Update new assets
     await RentalAsset.updateMany(
-      { _id: { $in: updateData.assets.map((id) => new mongoose.Types.ObjectId(id)) } },
+      { _id: { $in: assetObjectIds } },
       {
         $set: {
           status: "rented",
@@ -335,14 +601,14 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
         },
       }
     );
-    
+
     // Convert asset IDs to ObjectIds for database
-    updateObj.assets = updateData.assets.map((id: string) => new mongoose.Types.ObjectId(id));
+    updateObj.assets = assetObjectIds;
   }
 
   const rental = await Rental.findByIdAndUpdate(id, { $set: updateObj }, { new: true })
     .populate({
-      path: "assets",
+      path: "assets.assetId",
       select: "assetCode productId",
       populate: { path: "productId", select: "name" },
     })
@@ -371,13 +637,35 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
-      id: asset._id.toString(),
-      assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId
-        ? asset.productId.name
-        : undefined,
-    })) || [],
+    assets:
+      (
+        rental.assets as unknown as Array<{
+          assetId: PopulatedRentalAsset | mongoose.Types.ObjectId;
+          quantity: number;
+        }>
+      )?.map((item) => {
+        if (!isPopulatedAsset(item.assetId)) {
+          return {
+            id: extractAssetIdString(item.assetId),
+            assetCode: "",
+            productName: undefined,
+            quantity: item.quantity,
+          };
+        }
+        const asset = item.assetId;
+        return {
+          id: asset._id.toString(),
+          assetCode: asset.assetCode || "",
+          productName:
+            typeof asset.productId === "object" &&
+            asset.productId !== null &&
+            "_id" in asset.productId &&
+            "name" in asset.productId
+              ? asset.productId.name
+              : undefined,
+          quantity: item.quantity,
+        };
+      }) || [],
     startDate: rental.startDate,
     endDate: rental.endDate,
     expectedReturnDate: rental.expectedReturnDate,
@@ -385,6 +673,7 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -397,12 +686,12 @@ export async function updateRental(userId: string, input: UpdateRentalInput): Pr
 
 /**
  * Update rental status
- * 
+ *
  * Handles status transitions with appropriate business logic:
  * - "completed": Calculates penalty if overdue, returns assets to available
  * - "cancelled": Returns assets to available
  * - "active": Assets already set to rented (no change needed)
- * 
+ *
  * @param userId - ID of user updating the status
  * @param input - Status update data (id, status, optional actualReturnDate, penaltyRate, notes)
  * @returns Updated rental DTO
@@ -433,7 +722,7 @@ export async function updateRentalStatus(
   // ========================================================================
   // Handle Status-Specific Logic
   // ========================================================================
-  
+
   // When completing rental: calculate penalty and return assets
   if (input.status === "completed") {
     const actualReturnDate = input.actualReturnDate || new Date();
@@ -453,8 +742,11 @@ export async function updateRentalStatus(
 
     // Return all assets to available status
     if (oldRental.assets && oldRental.assets.length > 0) {
+      const oldAssetIds = (oldRental.assets as Array<{ assetId: mongoose.Types.ObjectId }>).map(
+        (a) => a.assetId
+      );
       await RentalAsset.updateMany(
-        { _id: { $in: oldRental.assets } },
+        { _id: { $in: oldAssetIds } },
         {
           $set: {
             status: "available",
@@ -463,12 +755,15 @@ export async function updateRentalStatus(
         }
       );
     }
-  } 
+  }
   // When cancelling rental: return assets to available
   else if (input.status === "cancelled") {
     if (oldRental.assets && oldRental.assets.length > 0) {
+      const oldAssetIds = (oldRental.assets as Array<{ assetId: mongoose.Types.ObjectId }>).map(
+        (a) => a.assetId
+      );
       await RentalAsset.updateMany(
-        { _id: { $in: oldRental.assets } },
+        { _id: { $in: oldAssetIds } },
         {
           $set: {
             status: "available",
@@ -477,7 +772,7 @@ export async function updateRentalStatus(
         }
       );
     }
-  } 
+  }
   // When activating rental: assets already set to rented during creation
   else if (input.status === "active" && oldRental.status === "pending") {
     // No action needed - assets already marked as rented
@@ -485,7 +780,7 @@ export async function updateRentalStatus(
 
   const rental = await Rental.findByIdAndUpdate(input.id, { $set: updateData }, { new: true })
     .populate({
-      path: "assets",
+      path: "assets.assetId",
       select: "assetCode productId",
       populate: { path: "productId", select: "name" },
     })
@@ -520,13 +815,35 @@ export async function updateRentalStatus(
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
-      id: asset._id.toString(),
-      assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId
-        ? asset.productId.name
-        : undefined,
-    })) || [],
+    assets:
+      (
+        rental.assets as unknown as Array<{
+          assetId: PopulatedRentalAsset | mongoose.Types.ObjectId;
+          quantity: number;
+        }>
+      )?.map((item) => {
+        if (!isPopulatedAsset(item.assetId)) {
+          return {
+            id: extractAssetIdString(item.assetId),
+            assetCode: "",
+            productName: undefined,
+            quantity: item.quantity,
+          };
+        }
+        const asset = item.assetId;
+        return {
+          id: asset._id.toString(),
+          assetCode: asset.assetCode || "",
+          productName:
+            typeof asset.productId === "object" &&
+            asset.productId !== null &&
+            "_id" in asset.productId &&
+            "name" in asset.productId
+              ? asset.productId.name
+              : undefined,
+          quantity: item.quantity,
+        };
+      }) || [],
     startDate: rental.startDate,
     endDate: rental.endDate,
     expectedReturnDate: rental.expectedReturnDate,
@@ -534,6 +851,7 @@ export async function updateRentalStatus(
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -546,7 +864,7 @@ export async function updateRentalStatus(
 
 /**
  * Get a single rental by ID
- * 
+ *
  * @param input - Rental ID
  * @returns Rental DTO with populated assets
  * @throws TRPCError if rental not found
@@ -556,9 +874,9 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
 
   const rental = await Rental.findById(input.id)
     .populate({
-      path: "assets",
+      path: "assets.assetId",
       select: "assetCode productId",
-      populate: { path: "productId", select: "name" },
+      populate: { path: "productId", select: "name insuranceFee replacementPrice" },
     })
     .lean();
 
@@ -576,13 +894,42 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
     customerPhone: rental.customerPhone,
     customerEmail: rental.customerEmail,
     customerAddress: rental.customerAddress,
-    assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
-      id: asset._id.toString(),
-      assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId
-        ? asset.productId.name
-        : undefined,
-    })) || [],
+    assets:
+      (
+        rental.assets as unknown as Array<{
+          assetId: PopulatedRentalAsset | mongoose.Types.ObjectId;
+          quantity: number;
+        }>
+      )?.map((item) => {
+        if (!isPopulatedAsset(item.assetId)) {
+          return {
+            id: extractAssetIdString(item.assetId),
+            assetCode: "",
+            productName: undefined,
+            quantity: item.quantity,
+            insuranceFee: undefined,
+            replacementPrice: undefined,
+          };
+        }
+        const asset = item.assetId;
+        const product = asset.productId;
+        const isPopulatedProduct =
+          typeof product === "object" && product !== null && "_id" in product && "name" in product;
+        return {
+          id: asset._id.toString(),
+          assetCode: asset.assetCode || "",
+          productName: isPopulatedProduct ? product.name : undefined,
+          insuranceFee:
+            isPopulatedProduct && "insuranceFee" in product
+              ? (product.insuranceFee as number | undefined)
+              : undefined,
+          replacementPrice:
+            isPopulatedProduct && "replacementPrice" in product
+              ? (product.replacementPrice as number | undefined)
+              : undefined,
+          quantity: item.quantity,
+        };
+      }) || [],
     startDate: rental.startDate,
     endDate: rental.endDate,
     expectedReturnDate: rental.expectedReturnDate,
@@ -590,6 +937,7 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
     dailyRate: rental.dailyRate,
     totalAmount: rental.totalAmount,
     deposit: rental.deposit,
+    shippingCost: rental.shippingCost ?? 0,
     penaltyRate: rental.penaltyRate,
     penaltyAmount: rental.penaltyAmount || 0,
     status: rental.status,
@@ -602,13 +950,13 @@ export async function getRentalById(input: GetRentalByIdInput): Promise<RentalDT
 
 /**
  * List rentals with filtering, pagination, and search
- * 
+ *
  * Features:
  * - Filter by status, customer email, date range
  * - Search by rental number, customer name, email, or phone
  * - Pagination support
  * - Dynamic penalty calculation for overdue active rentals
- * 
+ *
  * @param input - List filters, pagination, and search parameters
  * @returns Object containing rentals array and total count
  */
@@ -620,7 +968,7 @@ export async function listRentals(
   // ========================================================================
   // Build Query Filters
   // ========================================================================
-  
+
   const query: Record<string, unknown> = {};
 
   // Filter by status
@@ -648,13 +996,13 @@ export async function listRentals(
   // ========================================================================
   // Execute Query with Pagination
   // ========================================================================
-  
+
   const skip = (input.page - 1) * input.limit;
   const total = await Rental.countDocuments(query);
 
   let rentals = await Rental.find(query)
     .populate({
-      path: "assets",
+      path: "assets.assetId",
       select: "assetCode productId",
       populate: { path: "productId", select: "name" },
     })
@@ -666,7 +1014,7 @@ export async function listRentals(
   // ========================================================================
   // Apply Search Filter (client-side for flexibility)
   // ========================================================================
-  
+
   if (input.search) {
     const searchLower = input.search.toLowerCase();
     rentals = rentals.filter((rental) => {
@@ -682,21 +1030,21 @@ export async function listRentals(
   // ========================================================================
   // Transform Results and Calculate Dynamic Penalties
   // ========================================================================
-  
+
   return {
     rentals: rentals.map((rental) => {
       // Start with stored penalty amount (for completed rentals)
       let penaltyAmount = rental.penaltyAmount || 0;
-      
+
       // Calculate penalty dynamically for active rentals that are overdue
       if (rental.status === "active") {
         const today = new Date();
         const endDate = new Date(rental.endDate);
-        
+
         // Normalize times to midnight for accurate date comparison
         today.setHours(0, 0, 0, 0);
         endDate.setHours(0, 0, 0, 0);
-        
+
         // Calculate penalty if rental is overdue
         if (today > endDate) {
           const penaltyRate = rental.penaltyRate || 1.5;
@@ -716,13 +1064,35 @@ export async function listRentals(
         customerPhone: rental.customerPhone,
         customerEmail: rental.customerEmail,
         customerAddress: rental.customerAddress,
-        assets: (rental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
-          id: asset._id.toString(),
-          assetCode: asset.assetCode,
-          productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
-            ? asset.productId.name 
-            : undefined,
-        })) || [],
+        assets:
+          (
+            rental.assets as unknown as Array<{
+              assetId: PopulatedRentalAsset | mongoose.Types.ObjectId;
+              quantity: number;
+            }>
+          )?.map((item) => {
+            if (!isPopulatedAsset(item.assetId)) {
+              return {
+                id: extractAssetIdString(item.assetId),
+                assetCode: "",
+                productName: undefined,
+                quantity: item.quantity || 1,
+              };
+            }
+            const asset = item.assetId;
+            return {
+              id: asset._id.toString(),
+              assetCode: asset.assetCode || "",
+              productName:
+                typeof asset.productId === "object" &&
+                asset.productId !== null &&
+                "_id" in asset.productId &&
+                "name" in asset.productId
+                  ? asset.productId.name
+                  : undefined,
+              quantity: item.quantity || 1,
+            };
+          }) || [],
         startDate: rental.startDate,
         endDate: rental.endDate,
         expectedReturnDate: rental.expectedReturnDate,
@@ -730,6 +1100,7 @@ export async function listRentals(
         dailyRate: rental.dailyRate,
         totalAmount: rental.totalAmount,
         deposit: rental.deposit,
+        shippingCost: rental.shippingCost ?? 0,
         penaltyRate: rental.penaltyRate,
         penaltyAmount: penaltyAmount,
         status: rental.status,
@@ -745,19 +1116,16 @@ export async function listRentals(
 
 /**
  * Cancel a rental
- * 
+ *
  * Returns all assets to available status and updates rental status to "cancelled".
  * Optionally stores cancellation reason in notes.
- * 
+ *
  * @param userId - ID of user cancelling the rental
  * @param input - Cancellation data (id, optional reason)
  * @returns Updated rental DTO
  * @throws TRPCError if rental not found or already cancelled
  */
-export async function cancelRental(
-  userId: string,
-  input: CancelRentalInput
-): Promise<RentalDTO> {
+export async function cancelRental(userId: string, input: CancelRentalInput): Promise<RentalDTO> {
   await connectToDatabase();
 
   const rental = await Rental.findById(input.id).lean();
@@ -777,8 +1145,11 @@ export async function cancelRental(
 
   // Return assets to available
   if (rental.assets && rental.assets.length > 0) {
+    const assetIds = (
+      rental.assets as Array<{ assetId: mongoose.Types.ObjectId; quantity: number }>
+    ).map((a) => a.assetId);
     await RentalAsset.updateMany(
-      { _id: { $in: rental.assets } },
+      { _id: { $in: assetIds } },
       {
         $set: {
           status: "available",
@@ -795,9 +1166,13 @@ export async function cancelRental(
     updateData.notes = input.reason;
   }
 
-  const updatedRental = await Rental.findByIdAndUpdate(input.id, { $set: updateData }, { new: true })
+  const updatedRental = await Rental.findByIdAndUpdate(
+    input.id,
+    { $set: updateData },
+    { new: true }
+  )
     .populate({
-      path: "assets",
+      path: "assets.assetId",
       select: "assetCode productId",
       populate: { path: "productId", select: "name" },
     })
@@ -835,13 +1210,35 @@ export async function cancelRental(
     customerPhone: updatedRental.customerPhone,
     customerEmail: updatedRental.customerEmail,
     customerAddress: updatedRental.customerAddress,
-    assets: (updatedRental.assets as unknown as PopulatedRentalAsset[])?.map((asset) => ({
-      id: asset._id.toString(),
-      assetCode: asset.assetCode,
-      productName: typeof asset.productId === "object" && "_id" in asset.productId && "name" in asset.productId 
-        ? asset.productId.name 
-        : undefined,
-    })) || [],
+    assets:
+      (
+        updatedRental.assets as unknown as Array<{
+          assetId: PopulatedRentalAsset | mongoose.Types.ObjectId;
+          quantity?: number;
+        }>
+      )?.map((item) => {
+        if (!isPopulatedAsset(item.assetId)) {
+          return {
+            id: extractAssetIdString(item.assetId),
+            assetCode: "",
+            productName: undefined,
+            quantity: item.quantity || 1,
+          };
+        }
+        const asset = item.assetId;
+        return {
+          id: asset._id.toString(),
+          assetCode: asset.assetCode || "",
+          productName:
+            typeof asset.productId === "object" &&
+            asset.productId !== null &&
+            "_id" in asset.productId &&
+            "name" in asset.productId
+              ? asset.productId.name
+              : undefined,
+          quantity: item.quantity || 1,
+        };
+      }) || [],
     startDate: updatedRental.startDate,
     endDate: updatedRental.endDate,
     expectedReturnDate: updatedRental.expectedReturnDate,
@@ -849,6 +1246,7 @@ export async function cancelRental(
     dailyRate: updatedRental.dailyRate,
     totalAmount: updatedRental.totalAmount,
     deposit: updatedRental.deposit,
+    shippingCost: updatedRental.shippingCost ?? 0,
     penaltyRate: updatedRental.penaltyRate,
     penaltyAmount: updatedRental.penaltyAmount || 0,
     status: updatedRental.status,
@@ -861,9 +1259,9 @@ export async function cancelRental(
 
 /**
  * Complete a rental (convenience function)
- * 
+ *
  * Shortcut for updating rental status to "completed".
- * 
+ *
  * @param rentalId - ID of rental to complete
  * @param userId - ID of user completing the rental
  * @returns Updated rental DTO

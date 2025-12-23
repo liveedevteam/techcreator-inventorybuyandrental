@@ -1,6 +1,6 @@
 /**
  * Rental Model
- * 
+ *
  * Mongoose model for rental/lease agreements.
  * Tracks customer information, rental period, assets, pricing, and penalties.
  */
@@ -30,7 +30,10 @@ export interface IRental {
   customerPhone?: string;
   customerEmail?: string;
   customerAddress?: string;
-  assets: mongoose.Types.ObjectId[];
+  assets: Array<{
+    assetId: mongoose.Types.ObjectId;
+    quantity: number;
+  }>;
   startDate: Date;
   endDate: Date;
   expectedReturnDate?: Date;
@@ -38,6 +41,7 @@ export interface IRental {
   dailyRate: number;
   totalAmount: number;
   deposit: number;
+  shippingCost: number;
   penaltyRate?: number;
   penaltyAmount: number;
   status: RentalStatus;
@@ -54,8 +58,30 @@ export interface IRental {
 type RentalModel = Model<IRental>;
 
 /**
+ * Rental asset item schema (embedded document)
+ */
+const rentalAssetItemSchema = new Schema<{
+  assetId: mongoose.Types.ObjectId;
+  quantity: number;
+}>(
+  {
+    assetId: {
+      type: Schema.Types.ObjectId,
+      ref: "RentalAsset",
+      required: [true, "Asset ID is required"],
+    },
+    quantity: {
+      type: Number,
+      required: [true, "Quantity is required"],
+      min: [1, "Quantity must be at least 1"],
+    },
+  },
+  { _id: false }
+);
+
+/**
  * Rental schema with validation rules
- * 
+ *
  * Fields:
  * - rentalNumber: Unique identifier (format: RENT-YYYYMMDD-NNNN)
  * - customerName: Customer's name (required, 1-200 chars)
@@ -81,7 +107,7 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Rental Identification
     // ========================================================================
-    
+
     rentalNumber: {
       type: String,
       required: [true, "Rental number is required"],
@@ -93,7 +119,7 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Customer Information
     // ========================================================================
-    
+
     customerName: {
       type: String,
       required: [true, "Customer name is required"],
@@ -121,13 +147,14 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Rental Assets
     // ========================================================================
-    
+
     assets: {
-      type: [Schema.Types.ObjectId],
-      ref: "RentalAsset",
+      type: [rentalAssetItemSchema],
       required: [true, "At least one asset is required"],
       validate: {
-        validator: (v: mongoose.Types.ObjectId[]) => v.length > 0,
+        validator: function (v) {
+          return Array.isArray(v) && v.length > 0;
+        },
         message: "At least one asset is required",
       },
     },
@@ -135,7 +162,7 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Rental Period
     // ========================================================================
-    
+
     startDate: {
       type: Date,
       required: [true, "Start date is required"],
@@ -154,7 +181,7 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Pricing and Financials
     // ========================================================================
-    
+
     dailyRate: {
       type: Number,
       required: [true, "Daily rate is required"],
@@ -171,6 +198,12 @@ const rentalSchema = new Schema<IRental>(
       min: [0, "Deposit cannot be negative"],
       default: 0,
     },
+    shippingCost: {
+      type: Number,
+      required: [true, "Shipping cost is required"],
+      min: [0, "Shipping cost cannot be negative"],
+      default: 0,
+    },
     penaltyRate: {
       type: Number,
       min: [0, "Penalty rate cannot be negative"],
@@ -185,7 +218,7 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Status and Metadata
     // ========================================================================
-    
+
     status: {
       type: String,
       enum: ["pending", "active", "completed", "cancelled"],
@@ -201,7 +234,7 @@ const rentalSchema = new Schema<IRental>(
     // ========================================================================
     // Audit Fields
     // ========================================================================
-    
+
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -215,7 +248,6 @@ const rentalSchema = new Schema<IRental>(
 
 // Prevent model recompilation during hot reload
 const Rental =
-  (mongoose.models.Rental as RentalModel) ||
-  mongoose.model<IRental>("Rental", rentalSchema);
+  (mongoose.models.Rental as RentalModel) || mongoose.model<IRental>("Rental", rentalSchema);
 
 export default Rental;

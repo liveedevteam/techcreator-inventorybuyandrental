@@ -36,13 +36,29 @@ import { useTranslation } from "@/lib/hooks/useTranslation";
 
 export default function SalesPage() {
   const t = useTranslation();
+  const notify = (title: string, description?: string) => {
+    if (typeof window !== "undefined") {
+      window.alert(description ? `${title}\n${description}` : title);
+    } else {
+      console.log(title, description);
+    }
+  };
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBillPreviewOpen, setIsBillPreviewOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<{ id: string } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [previewSaleId, setPreviewSaleId] = useState<string | null>(null);
+  const [paymentEditSale, setPaymentEditSale] = useState<{
+    id: string;
+    totalAmount: number;
+    paidAmount: number;
+    deposit: number;
+    paymentStatus: "pending" | "paid" | "partial";
+  } | null>(null);
   const billRef = useRef<HTMLDivElement>(null);
-  const [statusFilter, setStatusFilter] = useState<"pending" | "completed" | "cancelled" | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"pending" | "completed" | "cancelled" | "all">(
+    "all"
+  );
   const [paymentStatusFilter] = useState<"pending" | "paid" | "partial" | "all">("all");
 
   const utils = trpc.useUtils();
@@ -63,16 +79,16 @@ export default function SalesPage() {
   // Data Sources for Product Dropdown
   // ============================================================================
   // 1. Products: Fetches all buy-type products (limit 100 max)
-  // 2. BuyStock: Fetches all stock entries (limit 100 max) 
+  // 2. BuyStock: Fetches all stock entries (limit 100 max)
   // 3. Matching: Products are matched with stock by productId
   //    - If no stock entry exists for a product, quantity shows as 0
   //    - Stock entries must be created manually via the Buy Stock page
   // ============================================================================
-  
-  const { 
-    data: products, 
-    isLoading: productsLoading, 
-    error: productsError 
+
+  const {
+    data: products,
+    isLoading: productsLoading,
+    error: productsError,
   } = trpc.product.list.useQuery({
     stockType: "buy",
     page: 1,
@@ -81,10 +97,7 @@ export default function SalesPage() {
 
   // Fetch all buy stock items (no filters) to match with products
   // This ensures we have complete stock data for the product dropdown
-  const { 
-    data: buyStockList, 
-    error: stocksError 
-  } = trpc.buyStock.list.useQuery({
+  const { data: buyStockList, error: stocksError } = trpc.buyStock.list.useQuery({
     page: 1,
     limit: 100, // Maximum allowed - fetch all stock items
     // No search or lowStockOnly filters - we need all stock for matching
@@ -94,6 +107,10 @@ export default function SalesPage() {
     onSuccess: () => {
       utils.sale.list.invalidate();
       closeModal();
+      notify("สร้างการขายสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถสร้างการขายได้", err.message);
     },
   });
 
@@ -101,13 +118,41 @@ export default function SalesPage() {
     onSuccess: () => {
       utils.sale.list.invalidate();
       closeModal();
+      notify("อัปเดตการขายสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถอัปเดตการขายได้", err.message);
     },
   });
 
   const updateStatusMutation = trpc.sale.updateStatus.useMutation({
-    onSuccess: () => {
+    onSuccess: (updatedSale) => {
+      // Optimistically update the visible list so status flips to "เสร็จสิ้น" immediately
+      utils.sale.list.setData(
+        {
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          paymentStatus: paymentStatusFilter !== "all" ? paymentStatusFilter : undefined,
+          page: 1,
+          limit: 50,
+        },
+        (old) =>
+          old
+            ? {
+                ...old,
+                sales: old.sales.map((sale) =>
+                  sale.id === updatedSale.id ? { ...sale, status: updatedSale.status } : sale
+                ),
+              }
+            : old
+      );
+
+      utils.sale.getById.setData({ id: updatedSale.id }, updatedSale);
       utils.sale.list.invalidate();
       utils.buyStock.list.invalidate();
+      notify("อัปเดตสถานะสำเร็จ");
+    },
+    onError: (err) => {
+      notify("อัปเดตสถานะไม่สำเร็จ", err.message);
     },
   });
 
@@ -115,27 +160,45 @@ export default function SalesPage() {
     onSuccess: () => {
       utils.sale.list.invalidate();
       setDeleteConfirmId(null);
+      notify("ลบการขายสำเร็จ");
+    },
+    onError: (err) => {
+      notify("ไม่สามารถลบการขายได้", err.message);
     },
   });
+
+  const paymentStatusOptions: Array<{ value: "pending" | "paid" | "partial"; label: string }> = [
+    { value: "pending", label: "รอชำระ" },
+    { value: "paid", label: "ชำระแล้ว" },
+    { value: "partial", label: "ชำระบางส่วน" },
+  ];
 
   // Debug logging for product-buyStock relationship
   useEffect(() => {
     if (products?.products && buyStockList?.stocks) {
-      console.log('Products:', products.products);
-      console.log('BuyStock:', buyStockList.stocks);
-      console.log('Product IDs:', products.products.map(p => p.id));
-      console.log('Stock Product IDs:', buyStockList.stocks.map(s => s.productId));
+      console.log("Products:", products.products);
+      console.log("BuyStock:", buyStockList.stocks);
+      console.log(
+        "Product IDs:",
+        products.products.map((p) => p.id)
+      );
+      console.log(
+        "Stock Product IDs:",
+        buyStockList.stocks.map((s) => s.productId)
+      );
     }
     if (productsError) {
-      console.error('Products query error:', productsError);
+      console.error("Products query error:", productsError);
     }
     if (stocksError) {
-      console.error('BuyStock query error:', stocksError);
+      console.error("BuyStock query error:", stocksError);
     }
   }, [products, buyStockList, productsError, stocksError]);
 
   const form = useForm<CreateSaleInput | UpdateSaleInput>({
-    resolver: zodResolver(editingSale ? updateSaleSchema : createSaleSchema) as unknown as Resolver<CreateSaleInput | UpdateSaleInput>,
+    resolver: zodResolver(editingSale ? updateSaleSchema : createSaleSchema) as unknown as Resolver<
+      CreateSaleInput | UpdateSaleInput
+    >,
     defaultValues: {
       customerName: "",
       customerPhone: "",
@@ -146,6 +209,7 @@ export default function SalesPage() {
       discount: 0,
       tax: 0,
       totalAmount: 0,
+      deposit: 0,
       paymentMethod: "cash",
       paymentStatus: "pending",
       paidAmount: 0,
@@ -156,16 +220,35 @@ export default function SalesPage() {
   const items = form.watch("items") || [];
   const discount = form.watch("discount") || 0;
   const tax = form.watch("tax") || 0;
+  const paymentStatus = form.watch("paymentStatus");
+  const totalAmountValue = form.watch("totalAmount") || 0;
 
-  // Calculate totals when items change
+  const formatCurrency = (value: number | undefined) =>
+    (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Calculate totals using the latest form values (avoids stale closures)
   const calculateTotals = () => {
-    const itemsTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+    const currentItems = form.getValues("items") || [];
+    const currentDiscount = form.getValues("discount") ?? 0;
+    const currentTax = form.getValues("tax") ?? 0;
+
+    const itemsTotal = currentItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const calculatedSubtotal = itemsTotal;
-    const calculatedTotal = calculatedSubtotal - discount + tax;
-    
+    const calculatedTotal = calculatedSubtotal - currentDiscount + currentTax;
+
     form.setValue("subtotal", calculatedSubtotal);
     form.setValue("totalAmount", calculatedTotal);
   };
+
+  // Keep paidAmount aligned with paymentStatus selection
+  useEffect(() => {
+    if (!paymentStatus) return;
+    if (paymentStatus === "pending") {
+      form.setValue("paidAmount", 0);
+    } else if (paymentStatus === "paid") {
+      form.setValue("paidAmount", totalAmountValue);
+    }
+  }, [paymentStatus, totalAmountValue, form]);
 
   const openCreateModal = () => {
     setEditingSale(null);
@@ -179,6 +262,7 @@ export default function SalesPage() {
       discount: 0,
       tax: 0,
       totalAmount: 0,
+      deposit: 0,
       paymentMethod: "cash",
       paymentStatus: "pending",
       paidAmount: 0,
@@ -187,7 +271,30 @@ export default function SalesPage() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (sale: { id: string; customerName: string; customerPhone?: string; customerEmail?: string; customerAddress?: string; items: Array<{ productId: string; productName: string; sku: string; quantity: number; unitPrice: number; totalPrice: number }>; subtotal: number; discount: number; tax: number; totalAmount: number; paymentMethod?: "cash" | "card" | "transfer" | "other"; paymentStatus: "pending" | "paid" | "partial"; paidAmount: number; notes?: string }) => {
+  const openEditModal = (sale: {
+    id: string;
+    customerName: string;
+    customerPhone?: string;
+    customerEmail?: string;
+    customerAddress?: string;
+    items: Array<{
+      productId: string;
+      productName: string;
+      sku: string;
+      quantity: number;
+      unitPrice: number;
+      totalPrice: number;
+    }>;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    totalAmount: number;
+    deposit: number;
+    paymentMethod?: "cash" | "card" | "transfer" | "other";
+    paymentStatus: "pending" | "paid" | "partial";
+    paidAmount: number;
+    notes?: string;
+  }) => {
     setEditingSale({ id: sale.id });
     form.reset({
       customerName: sale.customerName,
@@ -199,6 +306,7 @@ export default function SalesPage() {
       discount: sale.discount,
       tax: sale.tax,
       totalAmount: sale.totalAmount,
+      deposit: sale.deposit ?? 0,
       paymentMethod: sale.paymentMethod || "cash",
       paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial",
       paidAmount: sale.paidAmount,
@@ -214,10 +322,17 @@ export default function SalesPage() {
   };
 
   const onSubmit = (data: CreateSaleInput | UpdateSaleInput) => {
+    // Ensure deposit is a number (already parsed in input onChange, but safety check)
+    const processedData = {
+      ...data,
+      deposit:
+        typeof data.deposit === "string" ? parseFloat(data.deposit) || 0 : (data.deposit ?? 0),
+    };
+
     if (editingSale) {
-      updateMutation.mutate({ id: editingSale.id, ...data } as UpdateSaleInput);
+      updateMutation.mutate({ id: editingSale.id, ...processedData } as UpdateSaleInput);
     } else {
-      createMutation.mutate(data as CreateSaleInput);
+      createMutation.mutate(processedData as CreateSaleInput);
     }
   };
 
@@ -231,6 +346,45 @@ export default function SalesPage() {
 
   const handleCancel = (id: string) => {
     updateStatusMutation.mutate({ id, status: "cancelled" });
+  };
+
+  const openPaymentEdit = (sale: {
+    id: string;
+    totalAmount: number;
+    paidAmount: number;
+    deposit: number;
+    paymentStatus: "pending" | "paid" | "partial";
+  }) => {
+    setPaymentEditSale({
+      id: sale.id,
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount ?? 0,
+      deposit: sale.deposit ?? 0,
+      paymentStatus: sale.paymentStatus,
+    });
+  };
+
+  const closePaymentEdit = () => setPaymentEditSale(null);
+
+  const savePaymentEdit = () => {
+    if (!paymentEditSale) return;
+    const paidAmount =
+      paymentEditSale.paymentStatus === "paid"
+        ? paymentEditSale.totalAmount
+        : paymentEditSale.paidAmount;
+    updateMutation.mutate(
+      {
+        id: paymentEditSale.id,
+        paymentStatus: paymentEditSale.paymentStatus,
+        paidAmount,
+        deposit: paymentEditSale.deposit ?? 0,
+      },
+      {
+        onSuccess: () => {
+          closePaymentEdit();
+        },
+      }
+    );
   };
 
   const openBillPreview = (saleId: string) => {
@@ -291,14 +445,17 @@ export default function SalesPage() {
 
   const removeItem = (index: number) => {
     const currentItems = form.getValues("items") || [];
-    form.setValue("items", currentItems.filter((_, i) => i !== index));
+    form.setValue(
+      "items",
+      currentItems.filter((_, i) => i !== index)
+    );
     calculateTotals();
   };
 
   const updateItem = (index: number, field: keyof SaleItem, value: string | number) => {
     const currentItems = form.getValues("items") || [];
     const updatedItems = [...currentItems];
-    
+
     if (field === "productId" && typeof value === "string") {
       const product = products?.products.find((p) => p.id === value);
       if (product) {
@@ -313,37 +470,57 @@ export default function SalesPage() {
         };
       }
     } else if (field === "quantity" || field === "unitPrice") {
+      // Ensure numeric arithmetic uses the incoming value, not stale state
+      const currentItem = updatedItems[index];
+      const newQuantity = field === "quantity" ? Number(value) || 0 : currentItem.quantity;
+      const newUnitPrice = field === "unitPrice" ? Number(value) || 0 : currentItem.unitPrice;
+
       updatedItems[index] = {
-        ...updatedItems[index],
-        [field]: value,
-        totalPrice: updatedItems[index].quantity * updatedItems[index].unitPrice,
+        ...currentItem,
+        quantity: newQuantity,
+        unitPrice: newUnitPrice,
+        totalPrice: newQuantity * newUnitPrice,
       };
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
     }
-    
+
     form.setValue("items", updatedItems);
     calculateTotals();
   };
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: "blue" | "success" | "error" | "warning" }> = {
+    const statusMap: Record<
+      string,
+      { label: string; color: "blue" | "success" | "error" | "warning" }
+    > = {
       pending: { label: t.sale.statusPending, color: "warning" },
       completed: { label: t.sale.statusCompleted, color: "success" },
       cancelled: { label: t.sale.statusCancelled, color: "error" },
     };
     const statusInfo = statusMap[status] || { label: status, color: "blue" };
-    return <Badge variant="status" color={statusInfo.color}>{statusInfo.label}</Badge>;
+    return (
+      <Badge variant="status" color={statusInfo.color}>
+        {statusInfo.label}
+      </Badge>
+    );
   };
 
   const getPaymentStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: "blue" | "success" | "error" | "warning" }> = {
+    const statusMap: Record<
+      string,
+      { label: string; color: "blue" | "success" | "error" | "warning" }
+    > = {
       pending: { label: t.sale.paymentStatusPending, color: "warning" },
       paid: { label: t.sale.paymentStatusPaid, color: "success" },
       partial: { label: t.sale.paymentStatusPartial, color: "blue" },
     };
     const statusInfo = statusMap[status] || { label: status, color: "blue" };
-    return <Badge variant="status" color={statusInfo.color}>{statusInfo.label}</Badge>;
+    return (
+      <Badge variant="status" color={statusInfo.color}>
+        {statusInfo.label}
+      </Badge>
+    );
   };
 
   return (
@@ -407,6 +584,9 @@ export default function SalesPage() {
                       {t.sale.totalAmount}
                     </th>
                     <th className="text-left p-3 text-sm font-semibold text-foreground">
+                      ชำระแล้ว
+                    </th>
+                    <th className="text-left p-3 text-sm font-semibold text-foreground">
                       {t.sale.paymentStatus}
                     </th>
                     <th className="text-left p-3 text-sm font-semibold text-foreground">
@@ -426,20 +606,51 @@ export default function SalesPage() {
                       key={sale.id}
                       className="border-b border-border hover:bg-muted/30 transition-colors"
                     >
-                      <td className="p-3 text-sm font-medium text-foreground">
-                        {sale.billNumber}
-                      </td>
+                      <td className="p-3 text-sm font-medium text-foreground">{sale.billNumber}</td>
                       <td className="p-3 text-sm text-foreground">{sale.customerName}</td>
                       <td className="p-3 text-sm text-foreground">
                         {sale.totalAmount.toLocaleString()} ฿
                       </td>
-                      <td className="p-3">{getPaymentStatusBadge(sale.paymentStatus)}</td>
+                      <td className="p-3 text-sm text-foreground">
+                        {`${formatCurrency(sale.paidAmount)} ฿`}
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          {getPaymentStatusBadge(sale.paymentStatus)}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="px-2"
+                            onClick={() =>
+                              openPaymentEdit({
+                                id: sale.id,
+                                totalAmount: sale.totalAmount,
+                                paidAmount: sale.paidAmount,
+                                deposit: sale.deposit ?? 0,
+                                paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial",
+                              })
+                            }
+                            title="แก้ไขการชำระเงิน"
+                            aria-label="แก้ไขการชำระเงิน"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
                       <td className="p-3">{getStatusBadge(sale.status)}</td>
                       <td className="p-3 text-sm text-muted-foreground">
                         {new Date(sale.createdAt).toLocaleDateString("th-TH")}
                       </td>
                       <td className="p-3">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(`/sales/${sale.id}/bill`, "_blank")}
+                            title="พิมพ์บิล"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -452,11 +663,22 @@ export default function SalesPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => openEditModal({ 
-                                  ...sale, 
-                                  paymentMethod: (sale.paymentMethod as "cash" | "card" | "transfer" | "other" | undefined) || "cash",
-                                  paymentStatus: sale.paymentStatus as "pending" | "paid" | "partial"
-                                })}
+                                onClick={() =>
+                                  openEditModal({
+                                    ...sale,
+                                    paymentMethod:
+                                      (sale.paymentMethod as
+                                        | "cash"
+                                        | "card"
+                                        | "transfer"
+                                        | "other"
+                                        | undefined) || "cash",
+                                    paymentStatus: sale.paymentStatus as
+                                      | "pending"
+                                      | "paid"
+                                      | "partial",
+                                  })
+                                }
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -464,7 +686,8 @@ export default function SalesPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleComplete(sale.id)}
-                                title={t.sale.complete}
+                                title="เสร็จสิ้น"
+                                aria-label="เสร็จสิ้น"
                               >
                                 <Check className="h-4 w-4 text-success" />
                               </Button>
@@ -544,7 +767,7 @@ export default function SalesPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="customerEmail"
@@ -579,6 +802,52 @@ export default function SalesPage() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="paymentStatus"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>สถานะการชำระเงิน</FormLabel>
+                        <FormControl>
+                          <select
+                            {...field}
+                            className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground font-semibold"
+                          >
+                            <option value="pending">รอชำระ</option>
+                            <option value="paid">ชำระแล้ว</option>
+                            <option value="partial">ชำระบางส่วน</option>
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="deposit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>เงินมัดจำ</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="text"
+                            value={field.value?.toString() || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // Allow empty string or valid number input (including decimals)
+                              if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                                // Parse to number immediately but allow empty string for better UX
+                                const numValue = value === "" ? 0 : parseFloat(value) || 0;
+                                field.onChange(numValue);
+                              }
+                            }}
+                            placeholder="0"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
 
                 <FormField
@@ -605,7 +874,10 @@ export default function SalesPage() {
                   </div>
                   <div className="space-y-2">
                     {items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border border-border rounded">
+                      <div
+                        key={index}
+                        className="grid grid-cols-12 gap-2 items-end p-3 border border-border rounded"
+                      >
                         <div className="col-span-4">
                           <label className="text-sm text-muted-foreground mb-1 block">
                             {t.sale.selectProduct}
@@ -620,28 +892,30 @@ export default function SalesPage() {
                             {productsLoading ? (
                               <option disabled>กำลังโหลดสินค้า...</option>
                             ) : productsError ? (
-                              <option disabled>เกิดข้อผิดพลาด: {productsError.message || "ไม่สามารถโหลดสินค้าได้"}</option>
+                              <option disabled>
+                                เกิดข้อผิดพลาด: {productsError.message || "ไม่สามารถโหลดสินค้าได้"}
+                              </option>
                             ) : products?.products?.length === 0 ? (
                               <option disabled>ไม่พบสินค้าประเภทซื้อ</option>
                             ) : (
-                              products?.products
-                                ?.map((product) => {
-                                  const stock = buyStockList?.stocks?.find(
-                                    (s) => s.productId === product.id
-                                  );
-                                  const stockQuantity = stock?.quantity ?? 0;
-                                  const isOutOfStock = stockQuantity === 0;
-                                  return (
-                                    <option 
-                                      key={product.id} 
-                                      value={product.id}
-                                      disabled={isOutOfStock}
-                                    >
-                                      {product.name} ({product.sku}) - สต็อก: {stockQuantity} {product.unit || ""}
-                                      {isOutOfStock ? " [หมด]" : ""}
-                                    </option>
-                                  );
-                                })
+                              products?.products?.map((product) => {
+                                const stock = buyStockList?.stocks?.find(
+                                  (s) => s.productId === product.id
+                                );
+                                const stockQuantity = stock?.quantity ?? 0;
+                                const isOutOfStock = stockQuantity === 0;
+                                return (
+                                  <option
+                                    key={product.id}
+                                    value={product.id}
+                                    disabled={isOutOfStock}
+                                  >
+                                    {product.name} ({product.sku}) - สต็อก: {stockQuantity}{" "}
+                                    {product.unit || ""}
+                                    {isOutOfStock ? " [หมด]" : ""}
+                                  </option>
+                                );
+                              })
                             )}
                           </select>
                         </div>
@@ -799,7 +1073,13 @@ export default function SalesPage() {
                       <FormItem>
                         <FormLabel>{t.sale.paidAmount}</FormLabel>
                         <FormControl>
-                          <Input type="number" min="0" step="0.01" {...field} />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            {...field}
+                            disabled={paymentStatus === "pending"}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -986,6 +1266,83 @@ export default function SalesPage() {
               >
                 {t.common.delete}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Status Modal */}
+      {paymentEditSale && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-5 w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-foreground">อัปเดตการชำระเงิน</h3>
+              <Button variant="ghost" size="sm" onClick={closePaymentEdit}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-sm text-muted-foreground">ยอดรวม</p>
+                  <p className="font-semibold">
+                    {paymentEditSale.totalAmount.toLocaleString("th-TH", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">ชำระแล้ว</p>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={paymentEditSale.paidAmount}
+                    onChange={(e) =>
+                      setPaymentEditSale((prev) =>
+                        prev ? { ...prev, paidAmount: Number(e.target.value) || 0 } : prev
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">สถานะการชำระเงิน</p>
+                <div className="flex gap-2">
+                  {paymentStatusOptions.map((opt) => (
+                    <Button
+                      key={opt.value}
+                      type="button"
+                      variant={paymentEditSale.paymentStatus === opt.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() =>
+                        setPaymentEditSale((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                paymentStatus: opt.value,
+                                paidAmount:
+                                  opt.value === "paid" ? prev.totalAmount : prev.paidAmount,
+                              }
+                            : prev
+                        )
+                      }
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="outline" onClick={closePaymentEdit}>
+                ยกเลิก
+              </Button>
+              <Button onClick={savePaymentEdit}>บันทึก</Button>
             </div>
           </div>
         </div>

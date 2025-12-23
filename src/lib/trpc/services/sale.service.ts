@@ -1,6 +1,6 @@
 /**
  * Sale Service
- * 
+ *
  * Handles all sale-related business logic including:
  * - Creating and updating sales
  * - Managing sale status transitions
@@ -47,7 +47,7 @@ type SaleItemForStock = Array<{
 
 /**
  * Sale Data Transfer Object
- * 
+ *
  * Represents a sale with all its associated data including customer info,
  * items, pricing, and status.
  */
@@ -70,6 +70,7 @@ export interface SaleDTO {
   discount: number;
   tax: number;
   totalAmount: number;
+  deposit: number;
   paymentMethod?: string;
   paymentStatus: "pending" | "paid" | "partial";
   paidAmount: number;
@@ -86,10 +87,10 @@ export interface SaleDTO {
 
 /**
  * Generate unique bill number
- * 
+ *
  * Format: BILL-YYYYMMDD-NNNN
  * Example: BILL-20251214-0001
- * 
+ *
  * @returns Unique bill number string
  */
 async function generateBillNumber(): Promise<string> {
@@ -118,15 +119,13 @@ async function generateBillNumber(): Promise<string> {
 
 /**
  * Verify stock availability for sale items
- * 
+ *
  * Validates that products are of "buy" stock type and have sufficient stock.
- * 
+ *
  * @param items - Array of sale items to verify
  * @throws TRPCError if any product has insufficient stock or wrong stock type
  */
-async function verifyStockAvailability(
-  items: SaleItemForStock
-): Promise<void> {
+async function verifyStockAvailability(items: SaleItemForStock): Promise<void> {
   await connectToDatabase();
 
   for (const item of items) {
@@ -147,9 +146,8 @@ async function verifyStockAvailability(
     }
 
     // Verify buy stock exists
-    const productId = typeof item.productId === "string" 
-      ? item.productId 
-      : item.productId.toString();
+    const productId =
+      typeof item.productId === "string" ? item.productId : item.productId.toString();
     const buyStock = await BuyStock.findOne({
       productId: new mongoose.Types.ObjectId(productId),
     }).lean();
@@ -172,20 +170,16 @@ async function verifyStockAvailability(
 
 /**
  * Deduct stock for completed sale
- * 
+ *
  * @param items - Array of sale items
  * @param userId - ID of user performing the operation
  */
-async function deductStock(
-  items: SaleItemForStock,
-  userId: string
-): Promise<void> {
+async function deductStock(items: SaleItemForStock, userId: string): Promise<void> {
   await connectToDatabase();
 
   for (const item of items) {
-    const productId = typeof item.productId === "string" 
-      ? item.productId 
-      : item.productId.toString();
+    const productId =
+      typeof item.productId === "string" ? item.productId : item.productId.toString();
     const buyStock = await BuyStock.findOne({
       productId: new mongoose.Types.ObjectId(productId),
     });
@@ -219,20 +213,16 @@ async function deductStock(
 
 /**
  * Restore stock for cancelled sale
- * 
+ *
  * @param items - Array of sale items
  * @param userId - ID of user performing the operation
  */
-async function restoreStock(
-  items: SaleItemForStock,
-  userId: string
-): Promise<void> {
+async function restoreStock(items: SaleItemForStock, userId: string): Promise<void> {
   await connectToDatabase();
 
   for (const item of items) {
-    const productId = typeof item.productId === "string" 
-      ? item.productId 
-      : item.productId.toString();
+    const productId =
+      typeof item.productId === "string" ? item.productId : item.productId.toString();
     const buyStock = await BuyStock.findOne({
       productId: new mongoose.Types.ObjectId(productId),
     });
@@ -265,19 +255,16 @@ async function restoreStock(
 
 /**
  * Create a new sale
- * 
+ *
  * Validates stock availability, generates bill number, and creates the sale.
  * Stock is NOT deducted until sale status is changed to "completed".
- * 
+ *
  * @param userId - ID of user creating the sale
  * @param input - Sale creation data
  * @returns Created sale DTO
  * @throws TRPCError if stock is insufficient
  */
-export async function createSale(
-  userId: string,
-  input: CreateSaleInput
-): Promise<SaleDTO> {
+export async function createSale(userId: string, input: CreateSaleInput): Promise<SaleDTO> {
   await connectToDatabase();
 
   // Verify stock availability (only for buy stock type products)
@@ -286,9 +273,17 @@ export async function createSale(
   // Generate bill number
   const billNumber = await generateBillNumber();
 
+  // Auto-upgrade paymentStatus to "paid" if paidAmount covers total
+  const effectivePaymentStatus =
+    input.paymentStatus === "partial" && input.paidAmount >= input.totalAmount
+      ? "paid"
+      : input.paymentStatus;
+
   // Create sale
   const sale = await Sale.create({
     ...input,
+    paymentStatus: effectivePaymentStatus,
+    deposit: input.deposit ?? 0,
     billNumber,
     items: input.items.map((item) => ({
       ...item,
@@ -335,6 +330,7 @@ export async function createSale(
     discount: populatedSale.discount,
     tax: populatedSale.tax,
     totalAmount: populatedSale.totalAmount,
+    deposit: populatedSale.deposit ?? 0,
     paymentMethod: populatedSale.paymentMethod,
     paymentStatus: populatedSale.paymentStatus,
     paidAmount: populatedSale.paidAmount,
@@ -348,19 +344,16 @@ export async function createSale(
 
 /**
  * Update an existing sale
- * 
+ *
  * Only pending sales can be updated. If sale is completed, stock changes
  * must be handled separately.
- * 
+ *
  * @param userId - ID of user updating the sale
  * @param input - Sale update data
  * @returns Updated sale DTO
  * @throws TRPCError if sale not found or cannot be updated
  */
-export async function updateSale(
-  userId: string,
-  input: UpdateSaleInput
-): Promise<SaleDTO> {
+export async function updateSale(userId: string, input: UpdateSaleInput): Promise<SaleDTO> {
   await connectToDatabase();
 
   const { id, ...updateData } = input;
@@ -402,11 +395,16 @@ export async function updateSale(
     updateData.totalAmount = totalAmount;
   }
 
-  const sale = await Sale.findByIdAndUpdate(
-    id,
-    { $set: updateData },
-    { new: true }
-  ).lean();
+  // Auto-upgrade paymentStatus to "paid" if partial but paidAmount covers total
+  if (updateData.paymentStatus === "partial") {
+    const paid = updateData.paidAmount ?? oldSale.paidAmount ?? 0;
+    const total = (updateData.totalAmount as number | undefined) ?? oldSale.totalAmount ?? 0;
+    if (paid >= total) {
+      updateData.paymentStatus = "paid";
+    }
+  }
+
+  const sale = await Sale.findByIdAndUpdate(id, { $set: updateData }, { new: true }).lean();
 
   if (!sale) {
     throw new TRPCError({
@@ -443,6 +441,7 @@ export async function updateSale(
     discount: sale.discount,
     tax: sale.tax,
     totalAmount: sale.totalAmount,
+    deposit: sale.deposit ?? 0,
     paymentMethod: sale.paymentMethod,
     paymentStatus: sale.paymentStatus,
     paidAmount: sale.paidAmount,
@@ -456,10 +455,10 @@ export async function updateSale(
 
 /**
  * Update sale status
- * 
+ *
  * When status changes to "completed", stock is deducted.
  * When status changes from "completed" to "cancelled", stock is restored.
- * 
+ *
  * @param userId - ID of user updating the status
  * @param input - Status update data
  * @returns Updated sale DTO
@@ -481,13 +480,18 @@ export async function updateSaleStatus(
 
   // Handle status transitions
   if (input.status === "completed" && sale.status !== "completed") {
+    const isFullyPaid = sale.paymentStatus === "paid" || sale.paidAmount >= sale.totalAmount;
+    if (!isFullyPaid) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "กรุณาชำระเงินให้ครบก่อนเปลี่ยนสถานะเป็นเสร็จสิ้น",
+      });
+    }
+
     // Deduct stock when completing sale
     await verifyStockAvailability(sale.items as SaleItemForStock);
     await deductStock(sale.items as SaleItemForStock, userId);
-  } else if (
-    input.status === "cancelled" &&
-    sale.status === "completed"
-  ) {
+  } else if (input.status === "cancelled" && sale.status === "completed") {
     // Restore stock when cancelling completed sale
     await restoreStock(sale.items as SaleItemForStock, userId);
   }
@@ -546,6 +550,7 @@ export async function updateSaleStatus(
     paymentMethod: updatedSale.paymentMethod,
     paymentStatus: updatedSale.paymentStatus,
     paidAmount: updatedSale.paidAmount,
+    deposit: updatedSale.deposit ?? 0,
     status: updatedSale.status,
     notes: updatedSale.notes,
     createdBy: updatedSale.createdBy.toString(),
@@ -556,14 +561,12 @@ export async function updateSaleStatus(
 
 /**
  * Get a single sale by ID
- * 
+ *
  * @param input - Sale ID
  * @returns Sale DTO
  * @throws TRPCError if sale not found
  */
-export async function getSaleById(
-  input: GetSaleByIdInput
-): Promise<SaleDTO> {
+export async function getSaleById(input: GetSaleByIdInput): Promise<SaleDTO> {
   await connectToDatabase();
 
   const sale = await Sale.findById(input.id).lean();
@@ -594,6 +597,7 @@ export async function getSaleById(
     discount: sale.discount,
     tax: sale.tax,
     totalAmount: sale.totalAmount,
+    deposit: sale.deposit ?? 0,
     paymentMethod: sale.paymentMethod,
     paymentStatus: sale.paymentStatus,
     paidAmount: sale.paidAmount,
@@ -607,9 +611,9 @@ export async function getSaleById(
 
 /**
  * List sales with filtering and pagination
- * 
+ *
  * Supports filtering by status, payment status, customer name, and date range.
- * 
+ *
  * @param input - List filters and pagination parameters
  * @returns Object containing sales array and total count
  */
@@ -621,7 +625,7 @@ export async function listSales(
   // ========================================================================
   // Build Query Filters
   // ========================================================================
-  
+
   const query: Record<string, unknown> = {};
 
   // Filter by status
@@ -662,15 +666,11 @@ export async function listSales(
   // ========================================================================
   // Execute Query with Pagination
   // ========================================================================
-  
+
   const skip = (input.page - 1) * input.limit;
   const total = await Sale.countDocuments(query);
 
-  const sales = await Sale.find(query)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(input.limit)
-    .lean();
+  const sales = await Sale.find(query).sort({ createdAt: -1 }).skip(skip).limit(input.limit).lean();
 
   return {
     sales: sales.map((sale) => ({
@@ -695,6 +695,7 @@ export async function listSales(
       paymentMethod: sale.paymentMethod,
       paymentStatus: sale.paymentStatus,
       paidAmount: sale.paidAmount,
+      deposit: sale.deposit ?? 0,
       status: sale.status,
       notes: sale.notes,
       createdBy: sale.createdBy.toString(),
@@ -707,17 +708,14 @@ export async function listSales(
 
 /**
  * Delete a sale
- * 
+ *
  * Only pending sales can be deleted. Completed sales must be cancelled instead.
- * 
+ *
  * @param userId - ID of user deleting the sale
  * @param input - Sale ID
  * @throws TRPCError if sale not found or cannot be deleted
  */
-export async function deleteSale(
-  userId: string,
-  input: DeleteSaleInput
-): Promise<void> {
+export async function deleteSale(userId: string, input: DeleteSaleInput): Promise<void> {
   await connectToDatabase();
 
   const sale = await Sale.findById(input.id).lean();

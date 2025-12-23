@@ -1,6 +1,6 @@
 /**
  * Rental Asset Service
- * 
+ *
  * Handles all rental asset-related business logic including:
  * - Asset CRUD operations
  * - Asset status management
@@ -28,12 +28,16 @@ import * as activityLogService from "./activity-log.service";
 // ============================================================================
 
 /**
- * Populated product type (when productId is populated with name and sku)
+ * Populated product type (when productId is populated with name, sku, and rental rates)
  */
 type PopulatedProduct = {
   _id: mongoose.Types.ObjectId;
   name: string;
   sku: string;
+  dailyRentalRate?: number;
+  monthlyRentalRate?: number;
+  insuranceFee?: number;
+  replacementPrice?: number;
 };
 
 /**
@@ -47,7 +51,7 @@ function isPopulatedProduct(
 
 /**
  * Rental Asset Data Transfer Object
- * 
+ *
  * Represents a rental asset with product information and current status.
  */
 export interface RentalAssetDTO {
@@ -55,9 +59,42 @@ export interface RentalAssetDTO {
   productId: string;
   productName?: string;
   productSku?: string;
+  dailyRentalRate?: number;
+  monthlyRentalRate?: number;
+  insuranceFee?: number;
+  replacementPrice?: number;
   assetCode: string;
   status: "available" | "rented" | "maintenance" | "reserved" | "damaged";
   currentRentalId?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Grouped Rental Asset Data Transfer Object
+ *
+ * Represents a group of rental assets with the same asset code and product,
+ * with aggregated counts by status.
+ */
+export interface GroupedRentalAssetDTO {
+  id: string; // First asset's ID or base asset code
+  productId: string;
+  productName?: string;
+  productSku?: string;
+  dailyRentalRate?: number;
+  monthlyRentalRate?: number;
+  insuranceFee?: number;
+  replacementPrice?: number;
+  assetCode: string; // Base code (no sub-codes)
+  totalCount: number;
+  statusCounts: {
+    available: number;
+    rented: number;
+    maintenance: number;
+    reserved: number;
+    damaged: number;
+  };
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -69,10 +106,10 @@ export interface RentalAssetDTO {
 
 /**
  * Create a new rental asset
- * 
+ *
  * Validates that the product exists and is of rental type.
  * Ensures asset code uniqueness.
- * 
+ *
  * @param userId - ID of user creating the asset
  * @param input - Asset creation data
  * @returns Created asset DTO
@@ -99,48 +136,73 @@ export async function createRentalAsset(
     });
   }
 
-  // Validate asset code uniqueness
-  const existingAsset = await RentalAsset.findOne({ assetCode: input.assetCode });
+  const quantity = input.quantity || 1;
+  const baseAssetCode = input.assetCode.toUpperCase();
+  const productObjectId = new mongoose.Types.ObjectId(input.productId);
+
+  // Check if asset code already exists for the same product
+  // Allow same asset code for different products, but not for same product
+  const existingAsset = await RentalAsset.findOne({
+    assetCode: baseAssetCode,
+    productId: productObjectId,
+  });
   if (existingAsset) {
     throw new TRPCError({
       code: "CONFLICT",
-      message: "รหัสทรัพย์สินนี้มีอยู่ในระบบแล้ว",
+      message: "รหัสทรัพย์สินนี้มีอยู่ในระบบแล้วสำหรับสินค้านี้",
     });
   }
 
-  const asset = await RentalAsset.create({
-    ...input,
-    productId: input.productId,
-  });
+  // Create multiple assets with the same base asset code
+  const assetsToCreate = [];
+  for (let i = 0; i < quantity; i++) {
+    assetsToCreate.push({
+      productId: productObjectId,
+      assetCode: baseAssetCode, // Same code for all units
+      status: input.status,
+      notes: input.notes,
+    });
+  }
 
-  // Log activity
-  await activityLogService.createActivityLog(
-    userId,
-    "create",
-    "rentalAsset",
-    asset._id.toString(),
-    `${isPopulatedProduct(product) ? product.name : "Unknown"} - ${asset.assetCode}`
-  );
+  const createdAssets = await RentalAsset.insertMany(assetsToCreate);
 
+  // Log activity for each asset
+  const productName = product.name || "Unknown";
+  for (const asset of createdAssets) {
+    await activityLogService.createActivityLog(
+      userId,
+      "create",
+      "rentalAsset",
+      asset._id.toString(),
+      `${productName} - ${asset.assetCode}`
+    );
+  }
+
+  // Return the first created asset (for backward compatibility)
+  const firstAsset = createdAssets[0];
   return {
-    id: asset._id.toString(),
-    productId: asset.productId.toString(),
-    productName: isPopulatedProduct(product) ? product.name : undefined,
-    productSku: isPopulatedProduct(product) ? product.sku : undefined,
-    assetCode: asset.assetCode,
-    status: asset.status,
-    currentRentalId: asset.currentRentalId?.toString(),
-    notes: asset.notes,
-    createdAt: asset.createdAt,
-    updatedAt: asset.updatedAt,
+    id: firstAsset._id.toString(),
+    productId: product._id.toString(),
+    productName: product.name,
+    productSku: product.sku,
+    dailyRentalRate: product.dailyRentalRate,
+    monthlyRentalRate: product.monthlyRentalRate,
+    insuranceFee: product.insuranceFee,
+    replacementPrice: product.replacementPrice,
+    assetCode: firstAsset.assetCode,
+    status: firstAsset.status,
+    currentRentalId: firstAsset.currentRentalId?.toString(),
+    notes: firstAsset.notes,
+    createdAt: firstAsset.createdAt,
+    updatedAt: firstAsset.updatedAt,
   };
 }
 
 /**
  * Update an existing rental asset
- * 
+ *
  * Validates asset code uniqueness if asset code is being updated.
- * 
+ *
  * @param userId - ID of user updating the asset
  * @param input - Asset update data
  * @returns Updated asset DTO
@@ -154,7 +216,7 @@ export async function updateRentalAsset(
 
   const { id, ...updateData } = input;
 
-  const oldAsset = await RentalAsset.findById(id).populate("productId", "name sku").lean();
+  const oldAsset = await RentalAsset.findById(id);
   if (!oldAsset) {
     throw new TRPCError({
       code: "NOT_FOUND",
@@ -163,23 +225,26 @@ export async function updateRentalAsset(
   }
 
   // Validate asset code uniqueness if asset code is being updated
+  // Check uniqueness per product (same code allowed for different products)
   if (updateData.assetCode) {
     const existingAsset = await RentalAsset.findOne({
       assetCode: updateData.assetCode,
+      productId: oldAsset.productId, // Same product
       _id: { $ne: id },
     });
     if (existingAsset) {
       throw new TRPCError({
         code: "CONFLICT",
-        message: "รหัสทรัพย์สินนี้มีอยู่ในระบบแล้ว",
+        message: "รหัสทรัพย์สินนี้มีอยู่ในระบบแล้วสำหรับสินค้านี้",
       });
     }
   }
 
-  const asset = await RentalAsset.findByIdAndUpdate(id, { $set: updateData }, { new: true }).populate(
-    "productId",
-    "name sku"
-  );
+  const asset = await RentalAsset.findByIdAndUpdate(
+    id,
+    { $set: updateData },
+    { new: true }
+  ).populate("productId", "name sku");
 
   if (!asset) {
     throw new TRPCError({
@@ -196,14 +261,18 @@ export async function updateRentalAsset(
     "update",
     "rentalAsset",
     asset._id.toString(),
-    `${isPopulatedProduct(product) ? product.name : 'Unknown'} - ${asset.assetCode}`
+    `${isPopulatedProduct(product) ? product.name : "Unknown"} - ${asset.assetCode}`
   );
 
   return {
     id: asset._id.toString(),
-    productId: asset.productId.toString(),
+    productId: (isPopulatedProduct(product) ? product._id : asset.productId).toString(),
     productName: isPopulatedProduct(product) ? product.name : undefined,
     productSku: isPopulatedProduct(product) ? product.sku : undefined,
+    dailyRentalRate: isPopulatedProduct(product) ? product.dailyRentalRate : undefined,
+    monthlyRentalRate: isPopulatedProduct(product) ? product.monthlyRentalRate : undefined,
+    insuranceFee: isPopulatedProduct(product) ? product.insuranceFee : undefined,
+    replacementPrice: isPopulatedProduct(product) ? product.replacementPrice : undefined,
     assetCode: asset.assetCode,
     status: asset.status,
     currentRentalId: asset.currentRentalId?.toString(),
@@ -215,10 +284,10 @@ export async function updateRentalAsset(
 
 /**
  * Update asset status
- * 
+ *
  * Changes the status of an asset (available, rented, maintenance, etc.).
  * Tracks status changes for activity logging.
- * 
+ *
  * @param userId - ID of user updating the status
  * @param input - Status update data (id, status, optional notes)
  * @returns Updated asset DTO
@@ -247,7 +316,9 @@ export async function updateAssetStatus(
       },
     },
     { new: true }
-  ).populate("productId", "name sku").lean();
+  )
+    .populate("productId", "name sku")
+    .lean();
 
   if (!asset) {
     throw new TRPCError({
@@ -269,15 +340,19 @@ export async function updateAssetStatus(
     "update",
     "rentalAsset",
     asset._id.toString(),
-    `${isPopulatedProduct(product) ? product.name : 'Unknown'} - ${asset.assetCode}`,
+    `${isPopulatedProduct(product) ? product.name : "Unknown"} - ${asset.assetCode}`,
     changes
   );
 
   return {
     id: asset._id.toString(),
-    productId: asset.productId.toString(),
+    productId: (isPopulatedProduct(product) ? product._id : asset.productId).toString(),
     productName: isPopulatedProduct(product) ? product.name : undefined,
     productSku: isPopulatedProduct(product) ? product.sku : undefined,
+    dailyRentalRate: isPopulatedProduct(product) ? product.dailyRentalRate : undefined,
+    monthlyRentalRate: isPopulatedProduct(product) ? product.monthlyRentalRate : undefined,
+    insuranceFee: isPopulatedProduct(product) ? product.insuranceFee : undefined,
+    replacementPrice: isPopulatedProduct(product) ? product.replacementPrice : undefined,
     assetCode: asset.assetCode,
     status: asset.status,
     currentRentalId: asset.currentRentalId?.toString(),
@@ -289,7 +364,7 @@ export async function updateAssetStatus(
 
 /**
  * Get a single asset by ID
- * 
+ *
  * @param input - Asset ID
  * @returns Asset DTO with populated product information
  * @throws TRPCError if asset not found
@@ -297,7 +372,10 @@ export async function updateAssetStatus(
 export async function getAssetById(input: GetAssetByIdInput): Promise<RentalAssetDTO> {
   await connectToDatabase();
 
-  const asset = await RentalAsset.findById(input.id).populate("productId", "name sku");
+  const asset = await RentalAsset.findById(input.id).populate(
+    "productId",
+    "name sku dailyRentalRate monthlyRentalRate"
+  );
 
   if (!asset) {
     throw new TRPCError({
@@ -310,9 +388,13 @@ export async function getAssetById(input: GetAssetByIdInput): Promise<RentalAsse
 
   return {
     id: asset._id.toString(),
-    productId: asset.productId.toString(),
+    productId: (isPopulatedProduct(product) ? product._id : asset.productId).toString(),
     productName: isPopulatedProduct(product) ? product.name : undefined,
     productSku: isPopulatedProduct(product) ? product.sku : undefined,
+    dailyRentalRate: isPopulatedProduct(product) ? product.dailyRentalRate : undefined,
+    monthlyRentalRate: isPopulatedProduct(product) ? product.monthlyRentalRate : undefined,
+    insuranceFee: isPopulatedProduct(product) ? product.insuranceFee : undefined,
+    replacementPrice: isPopulatedProduct(product) ? product.replacementPrice : undefined,
     assetCode: asset.assetCode,
     status: asset.status,
     currentRentalId: asset.currentRentalId?.toString(),
@@ -324,22 +406,23 @@ export async function getAssetById(input: GetAssetByIdInput): Promise<RentalAsse
 
 /**
  * List assets with filtering, pagination, and search
- * 
+ *
  * Supports filtering by product ID and status, and searching by
  * asset code, product name, or SKU.
- * 
+ * Groups assets by assetCode + productId and returns aggregated counts.
+ *
  * @param input - List filters, pagination, and search parameters
- * @returns Object containing assets array and total count
+ * @returns Object containing grouped assets array and total count
  */
 export async function listAssets(
   input: ListAssetsInput
-): Promise<{ assets: RentalAssetDTO[]; total: number }> {
+): Promise<{ assets: GroupedRentalAssetDTO[]; total: number }> {
   await connectToDatabase();
 
   // ========================================================================
   // Build Query Filters
   // ========================================================================
-  
+
   const query: Record<string, unknown> = {};
 
   // Filter by product ID
@@ -347,28 +430,24 @@ export async function listAssets(
     query.productId = input.productId;
   }
 
-  // Filter by status
-  if (input.status) {
-    query.status = input.status;
-  }
+  // Note: We don't filter by status here because we want to group all statuses
+  // Status filtering will be applied after grouping
 
   // ========================================================================
-  // Execute Query with Pagination
+  // Execute Query (fetch all matching assets, no pagination yet)
   // ========================================================================
-  
-  const skip = (input.page - 1) * input.limit;
-  const total = await RentalAsset.countDocuments(query);
 
   let assets = await RentalAsset.find(query)
-    .populate("productId", "name sku")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(input.limit);
+    .populate(
+      "productId",
+      "name sku dailyRentalRate monthlyRentalRate insuranceFee replacementPrice"
+    )
+    .sort({ createdAt: -1 });
 
   // ========================================================================
   // Apply Search Filter (client-side for flexibility)
   // ========================================================================
-  
+
   if (input.search) {
     assets = assets.filter((asset) => {
       const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
@@ -384,32 +463,99 @@ export async function listAssets(
     });
   }
 
+  // ========================================================================
+  // Group Assets by assetCode + productId
+  // ========================================================================
+
+  const groupedMap = new Map<
+    string,
+    {
+      assets: typeof assets;
+      product: PopulatedProduct | mongoose.Types.ObjectId;
+    }
+  >();
+
+  for (const asset of assets) {
+    const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
+    const productId = (isPopulatedProduct(product) ? product._id : asset.productId).toString();
+    const groupKey = `${asset.assetCode}_${productId}`;
+
+    if (!groupedMap.has(groupKey)) {
+      groupedMap.set(groupKey, {
+        assets: [],
+        product,
+      });
+    }
+
+    groupedMap.get(groupKey)!.assets.push(asset);
+  }
+
+  // ========================================================================
+  // Convert Groups to GroupedRentalAssetDTO
+  // ========================================================================
+
+  const groupedAssets: GroupedRentalAssetDTO[] = [];
+
+  for (const [groupKey, group] of groupedMap.entries()) {
+    const firstAsset = group.assets[0];
+    const product = group.product as PopulatedProduct | mongoose.Types.ObjectId;
+
+    // Calculate status counts
+    const statusCounts = {
+      available: 0,
+      rented: 0,
+      maintenance: 0,
+      reserved: 0,
+      damaged: 0,
+    };
+
+    for (const asset of group.assets) {
+      statusCounts[asset.status as keyof typeof statusCounts]++;
+    }
+
+    // Apply status filter if specified
+    if (input.status && statusCounts[input.status] === 0) {
+      continue;
+    }
+
+    groupedAssets.push({
+      id: firstAsset._id.toString(),
+      productId: (isPopulatedProduct(product) ? product._id : firstAsset.productId).toString(),
+      productName: isPopulatedProduct(product) ? product.name : undefined,
+      productSku: isPopulatedProduct(product) ? product.sku : undefined,
+      dailyRentalRate: isPopulatedProduct(product) ? product.dailyRentalRate : undefined,
+      monthlyRentalRate: isPopulatedProduct(product) ? product.monthlyRentalRate : undefined,
+      insuranceFee: isPopulatedProduct(product) ? product.insuranceFee : undefined,
+      replacementPrice: isPopulatedProduct(product) ? product.replacementPrice : undefined,
+      assetCode: firstAsset.assetCode,
+      totalCount: group.assets.length,
+      statusCounts,
+      notes: firstAsset.notes,
+      createdAt: firstAsset.createdAt,
+      updatedAt: firstAsset.updatedAt,
+    });
+  }
+
+  // ========================================================================
+  // Apply Pagination to Grouped Results
+  // ========================================================================
+
+  const total = groupedAssets.length;
+  const skip = (input.page - 1) * input.limit;
+  const paginatedAssets = groupedAssets.slice(skip, skip + input.limit);
+
   return {
-    assets: assets.map((asset) => {
-      const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
-      return {
-        id: asset._id.toString(),
-        productId: asset.productId.toString(),
-        productName: isPopulatedProduct(product) ? product.name : undefined,
-        productSku: isPopulatedProduct(product) ? product.sku : undefined,
-        assetCode: asset.assetCode,
-        status: asset.status,
-        currentRentalId: asset.currentRentalId?.toString(),
-        notes: asset.notes,
-        createdAt: asset.createdAt,
-        updatedAt: asset.updatedAt,
-      };
-    }),
-    total: input.search ? assets.length : total,
+    assets: paginatedAssets,
+    total,
   };
 }
 
 /**
  * Get all available assets (not currently rented)
- * 
+ *
  * Returns assets with status "available", optionally filtered by product ID.
  * Used for rental creation to show only available assets.
- * 
+ *
  * @param productId - Optional product ID to filter by
  * @returns Array of available asset DTOs, sorted by asset code
  */
@@ -422,16 +568,23 @@ export async function getAvailableAssets(productId?: string): Promise<RentalAsse
   }
 
   const assets = await RentalAsset.find(query)
-    .populate("productId", "name sku")
+    .populate(
+      "productId",
+      "name sku dailyRentalRate monthlyRentalRate insuranceFee replacementPrice"
+    )
     .sort({ assetCode: 1 });
 
   return assets.map((asset) => {
     const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
     return {
       id: asset._id.toString(),
-      productId: asset.productId.toString(),
+      productId: (isPopulatedProduct(product) ? product._id : asset.productId).toString(),
       productName: isPopulatedProduct(product) ? product.name : undefined,
       productSku: isPopulatedProduct(product) ? product.sku : undefined,
+      dailyRentalRate: isPopulatedProduct(product) ? product.dailyRentalRate : undefined,
+      monthlyRentalRate: isPopulatedProduct(product) ? product.monthlyRentalRate : undefined,
+      insuranceFee: isPopulatedProduct(product) ? product.insuranceFee : undefined,
+      replacementPrice: isPopulatedProduct(product) ? product.replacementPrice : undefined,
       assetCode: asset.assetCode,
       status: asset.status,
       currentRentalId: asset.currentRentalId?.toString(),
@@ -443,11 +596,91 @@ export async function getAvailableAssets(productId?: string): Promise<RentalAsse
 }
 
 /**
+ * Get grouped available assets for rental selection
+ *
+ * Groups available assets by assetCode + productId and includes all individual asset IDs
+ * in each group. Used for rental creation to show grouped assets while still allowing
+ * selection of individual assets.
+ *
+ * @returns Array of grouped available assets with individual asset IDs
+ */
+export interface GroupedAvailableAssetDTO {
+  assetCode: string;
+  productId: string;
+  productName?: string;
+  productSku?: string;
+  dailyRentalRate?: number;
+  monthlyRentalRate?: number;
+  insuranceFee?: number;
+  replacementPrice?: number;
+  availableCount: number;
+  assetIds: string[]; // All individual asset IDs in this group
+}
+
+export async function getAvailableGroupedAssets(): Promise<GroupedAvailableAssetDTO[]> {
+  await connectToDatabase();
+
+  const assets = await RentalAsset.find({ status: "available" })
+    .populate(
+      "productId",
+      "name sku dailyRentalRate monthlyRentalRate insuranceFee replacementPrice"
+    )
+    .sort({ assetCode: 1 });
+
+  // Group by assetCode + productId
+  const groupedMap = new Map<
+    string,
+    {
+      assets: typeof assets;
+      product: PopulatedProduct | mongoose.Types.ObjectId;
+    }
+  >();
+
+  for (const asset of assets) {
+    const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
+    const productId = (isPopulatedProduct(product) ? product._id : asset.productId).toString();
+    const groupKey = `${asset.assetCode}_${productId}`;
+
+    if (!groupedMap.has(groupKey)) {
+      groupedMap.set(groupKey, {
+        assets: [],
+        product,
+      });
+    }
+
+    groupedMap.get(groupKey)!.assets.push(asset);
+  }
+
+  // Convert to DTOs
+  const groupedAssets: GroupedAvailableAssetDTO[] = [];
+
+  for (const [groupKey, group] of groupedMap.entries()) {
+    const firstAsset = group.assets[0];
+    const product = group.product as PopulatedProduct | mongoose.Types.ObjectId;
+
+    groupedAssets.push({
+      assetCode: firstAsset.assetCode,
+      productId: (isPopulatedProduct(product) ? product._id : firstAsset.productId).toString(),
+      productName: isPopulatedProduct(product) ? product.name : undefined,
+      productSku: isPopulatedProduct(product) ? product.sku : undefined,
+      dailyRentalRate: isPopulatedProduct(product) ? product.dailyRentalRate : undefined,
+      monthlyRentalRate: isPopulatedProduct(product) ? product.monthlyRentalRate : undefined,
+      insuranceFee: isPopulatedProduct(product) ? product.insuranceFee : undefined,
+      replacementPrice: isPopulatedProduct(product) ? product.replacementPrice : undefined,
+      availableCount: group.assets.length,
+      assetIds: group.assets.map((asset) => asset._id.toString()),
+    });
+  }
+
+  return groupedAssets;
+}
+
+/**
  * Delete a rental asset
- * 
+ *
  * Permanently removes an asset from the system.
  * Prevents deletion of assets that are currently rented.
- * 
+ *
  * @param userId - ID of user deleting the asset
  * @param input - Asset ID to delete
  * @returns Success status
@@ -476,7 +709,7 @@ export async function deleteAsset(
   }
 
   const product = asset.productId as PopulatedProduct | mongoose.Types.ObjectId;
-  const assetName = `${isPopulatedProduct(product) ? product.name : 'Unknown'} - ${asset.assetCode}`;
+  const assetName = `${isPopulatedProduct(product) ? product.name : "Unknown"} - ${asset.assetCode}`;
 
   await RentalAsset.findByIdAndDelete(input.id);
 
