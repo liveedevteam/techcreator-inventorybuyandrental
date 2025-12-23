@@ -15,15 +15,8 @@ import {
   MobileHeader,
 } from "@/components";
 import { StatusIndicator } from "@/components/common/status-indicator";
-import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  ArrowRight,
-  Shield,
-  Loader2,
-} from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Shield, Loader2 } from "lucide-react";
+import { ownerConfig } from "@/lib/config/owner";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -47,13 +40,13 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError("Invalid email or password");
+        setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
       } else {
         router.push("/");
         router.refresh();
       }
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsLoading(false);
     }
@@ -76,12 +69,8 @@ export default function LoginPage() {
             <div className="w-full max-w-md space-y-6">
               {/* Header */}
               <div className="space-y-2">
-                <h1 className="text-2xl font-bold text-foreground lg:text-3xl">
-                  Sign In
-                </h1>
-                <p className="text-muted-foreground">
-                  Enter your credentials to access your account
-                </p>
+                <h1 className="text-2xl font-bold text-foreground lg:text-3xl">เข้าสู่ระบบ</h1>
+                <p className="text-muted-foreground">กรุณากรอกอีเมลและรหัสผ่านเพื่อเข้าสู่ระบบ</p>
               </div>
 
               {/* Login Form */}
@@ -95,12 +84,12 @@ export default function LoginPage() {
                     className="flex items-center gap-2 text-sm font-medium text-primary"
                   >
                     <Mail className="h-4 w-4" />
-                    Email Address
+                    อีเมล
                   </Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="admin@loopsevent.com"
+                    placeholder="กรุณากรอกอีเมล"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -115,13 +104,13 @@ export default function LoginPage() {
                     className="flex items-center gap-2 text-sm font-medium text-primary"
                   >
                     <Lock className="h-4 w-4" />
-                    Password
+                    รหัสผ่าน
                   </Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
+                      placeholder="กรุณากรอกรหัสผ่าน"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -132,11 +121,7 @@ export default function LoginPage() {
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
@@ -150,32 +135,26 @@ export default function LoginPage() {
                       onChange={(e) => setRememberMe(e.target.checked)}
                       className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
                     />
-                    <span className="text-sm text-muted-foreground">
-                      Remember me
-                    </span>
+                    <span className="text-sm text-muted-foreground">จดจำการเข้าสู่ระบบ</span>
                   </label>
                   <Link
                     href="/forgot-password"
                     className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
                   >
-                    Forgot Password?
+                    ลืมรหัสผ่าน?
                   </Link>
                 </div>
 
                 {/* Sign In Button */}
-                <Button
-                  type="submit"
-                  className="h-11 w-full gap-2"
-                  disabled={isLoading}
-                >
+                <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Signing in...
+                      กำลังเข้าสู่ระบบ...
                     </>
                   ) : (
                     <>
-                      Sign In
+                      เข้าสู่ระบบ
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -187,24 +166,21 @@ export default function LoginPage() {
                     <div className="w-full border-t border-border" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      OR
-                    </span>
+                    <span className="bg-background px-2 text-muted-foreground">OR</span>
                   </div>
                 </div>
 
                 {/* Social Login Buttons */}
-                
 
                 {/* Contact Admin */}
                 <p className="text-center text-sm text-muted-foreground">
-                  Don&apos;t have an account?{" "}
-                  <Link
-                    href="mailto:admin@loopsevent.com"
+                  ไม่มีบัญชี?{" "}
+                  <a
+                    href={`tel:${ownerConfig.phone}`}
                     className="font-medium text-primary transition-colors hover:text-primary/80"
                   >
-                    Contact Administrator
-                  </Link>
+                    ติดต่อผู้ดูแลระบบ ({ownerConfig.phone})
+                  </a>
                 </p>
               </form>
 
@@ -216,11 +192,11 @@ export default function LoginPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-foreground">
-                      Secure Login
+                      การเข้าสู่ระบบที่ปลอดภัย
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Your connection is encrypted and secure. We never store
-                      your password in plain text.
+                      การเชื่อมต่อของคุณถูกเข้ารหัสและปลอดภัย
+                      เราไม่เก็บรหัสผ่านของคุณในรูปแบบข้อความธรรมดา
                     </p>
                   </div>
                 </CardContent>
@@ -232,7 +208,9 @@ export default function LoginPage() {
 
       {/* Footer */}
       <footer className="flex flex-col items-center justify-between gap-4 border-t border-border bg-background px-6 py-4 text-sm text-muted-foreground sm:flex-row">
-        <div>© {new Date().getFullYear()} Loops Event Manager. All rights reserved.</div>
+        <div>
+          © {new Date().getFullYear()} {ownerConfig.name}. All rights reserved.
+        </div>
         <nav className="flex items-center gap-4">
           <Link href="/privacy" className="transition-colors hover:text-foreground">
             Privacy Policy
